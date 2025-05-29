@@ -16,6 +16,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-konva": "^19.0.3",
+    "react-router-dom": "^7.6.1",
     "recharts": "^2.15.3"
   },
   "devDependencies": {
