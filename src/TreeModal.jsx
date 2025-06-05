@@ -100,11 +100,13 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
 
   useEffect(() => {
     async function fetchHistory() {
-      const { data, error } = await supabase
-        .from('trees')
-        .select('*')
-        .eq('id', treeId)
-        .order('date');
+     const numericPart = treeId.split(' ')[0];      
+     const realId      = `Tree-${numericPart}`;     
+     const { data, error } = await supabase
+      .from('trees')
+      .select('*')
+      .eq('id', realId)                             // use the actual PK
+      .order('date');
       if (!error && data) {
         const formattedData = data.map(d => ({
           date: d.date,
@@ -117,7 +119,6 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
     }
     fetchHistory();
   }, [treeId]);
-
 
   
   // Generic change handler for text inputs.
