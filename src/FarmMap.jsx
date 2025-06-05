@@ -162,6 +162,15 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   const stageW = cols * (cellW + gapX);
   const stageH = rows * (cellH + gapY);  // +label height
 
+  const stageRef = React.useRef(null);
+
+  React.useEffect(() => {
+  if (stageRef.current) {
+    stageRef.current.container().style.touchAction = 'pinch-zoom'; // ← key line
+  }
+    }, []);
+
+
   return (
     <div style={{ overflow: "auto", maxHeight: "90vh" }}>
       <Stage width={stageW} height={stageH}>
