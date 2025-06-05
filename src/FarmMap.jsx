@@ -173,7 +173,7 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
 
   return (
     <div style={{ overflow: "auto", maxHeight: "90vh" }}>
-      <Stage width={stageW} height={stageH}>
+      <Stage width={stageW} height={stageH} preventDefault={false} >
         <Layer>{nodes}</Layer>
       </Stage>
         {editId && (
