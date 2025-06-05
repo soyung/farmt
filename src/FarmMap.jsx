@@ -1,160 +1,160 @@
-// src/FarmMap.jsx – filled layers inside square, green>blue>red, cleaned JSX
-import React from 'react';
-import { Stage, Layer, Rect, Text, Group, Line } from 'react-konva';
+// src/FarmMap.jsx
+import React from "react";
+import {
+  Stage,
+  Layer,
+  Group,
+  Rect,
+  Text,
+  Image as KImage,
+} from "react-konva";
 
-/* ───────────── Friendly nicknames (optional) ─────────── */
-const TREE_NICKNAMES = {
-  'Tree-1-3': '소평옥 2021',
-  'Tree-1-6': '루비피치 2021',
-  'Tree-1-8': '머스켓함부르크 2021',
-  'Tree-1-12': '루비피치 2021',
-  'Tree-1-19': '머스켓함부르크2021',
-  'Tree-1-20': '머스켓함부르크2021',
-  'Tree-1-23': '머스켓함부르크2021',
-  'Tree-1-25': '까버네쇼비농 2020',
-  'Tree-2-3': '머스켓함부르크2021',
-  'Tree-2-7': '블랑블랑 2020',
-  'Tree-2-10': '알렉산드리아 2021',
-  'Tree-2-12': '알렉산드리아 2021',
-  'Tree-2-14': '알렉산드리아 2021',
-  'Tree-2-16': '알렉산드리아 2021',
-  'Tree-2-20': '알렉산드리아 2021',
-  'Tree-2-22': '알렉산드리아 2021',
-  'Tree-3-2': '루비시들리스 2021',
-  'Tree-3-8': '샤인머스켓 2021',
-  'Tree-3-11': '알렉산드리아 2021',
-  'Tree-3-14': '매니큐이핑거 2021',
-  'Tree-3-15': '매니큐어핑거 2020',
-  'Tree-3-21': '블랑블랑 2020',
-  'Tree-3-23': '루비시들리스 2021',
-  'Tree-3-25': '샤인머스켓 2021',
-  'Tree-4-2': '플레임시들리스 2020',
-  'Tree-4-12': '매니큐어핑거 2021',
-  'Tree-4-14': '흑바라드 2021',
-  'Tree-4-15': '흑바라드 2021',
-  'Tree-4-16': '흑바라드 2021',
-  'Tree-4-17': '머스켓함부르크 2021',
-  'Tree-4-19': '루비피치 2021',
-  'Tree-4-22': '루비피치 2021',
-  'Tree-4-23': '흑바라드 2021',
-  'Tree-4-25': '플레임시들리스 2021'
-};
-/* ───────────── Threshold helpers ───────────── */
-const overBugThreshold     = (bugs)    => Number(bugs) >= 4;               // red layer
-const overBalanceThreshold = (balance) => [1, 2, '1', '2'].includes(balance); // blue layer
-const overPowerThreshold   = (power)   => [1, 5, '1', '5'].includes(power);   // green layer
+import useIcons from "./hooks/useIcons";
+import { useSignalLights } from "./SignalLightsContext"; // ← make sure this file exists!
 
-// Days without entries to trigger yellow override
-const STALE_DAYS_THRESHOLD = 3;
+/* ------------------------------------------------------------------ */
+/* Utility helpers                                                    */
+/* ------------------------------------------------------------------ */
 
-// Helper to compute days difference
-function daysSince(dateStr) {
-  return (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24);
-}
-// Build color rings and detect staleness
-function computeCurrentColors(records) {
+// How many days have passed since a YYYY-MM-DD string?
+const daysSince = (isoDate) =>
+  (Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24);
+
+// Decide which icons should light up for *one* tree’s history
+function computeTriggers(records) {
   if (!records || records.length === 0) {
-    return { stale: true, bug: null, balance: null, power: null };
+    return { stale: true, treeOn: false, bugOn: false, clockOn: true };
   }
-  // records sorted newest first by `date` string
-  const latestDate = records[0].date;
-  const stale = daysSince(latestDate) > STALE_DAYS_THRESHOLD;
-  if (stale) {
-    return { stale: true, bug: null, balance: null, power: null };
-  }
-  let bug = null, bal = null, pow = null;
+
+  // 1️⃣  Staleness = days since newest row
+  const newestDate = records[0].date;
+  const stale = daysSince(newestDate) >= 3;
+
+  let treeOn = false;
+  let bugOn = false;
+
   for (const row of records) {
-    if (row.bugs ?? row.balance ?? row.power) {
-      if (bug === null && overBugThreshold(row.bugs))       bug = 'red';
-      if (bal === null && overBalanceThreshold(row.balance)) bal = 'blue';
-      if (pow === null && overPowerThreshold(row.power))     pow = 'green';
-      if (bug !== null && bal !== null && pow !== null) break;
+    if (!treeOn && (["1", "2", 1, 2].includes(row.balance) ||
+                    ["1", "5", 1, 5].includes(row.power))) {
+      treeOn = true;
     }
+    if (!bugOn && Number(row.bugs) >= 4) bugOn = true;
+
+    if (treeOn && bugOn) break; // no need to scan further
   }
-  return { stale: false, bug, balance: bal, power: pow };
+
+  return { stale, treeOn, bugOn, clockOn: stale };
 }
 
-const FarmMap = ({ treeData = {}, onTreeClick }) => {
-  const rows = 25;
-  const cols = 8;
-  const size = 20;   // outer size
-  const step = 4;    // inset for each layer
-  const spacing = 10;
+/* ------------------------------------------------------------------ */
+/* Main component                                                     */
+/* ------------------------------------------------------------------ */
 
-  const gridW = cols * (size + spacing);
-  const gridH = rows * (size + spacing);
+export default function FarmMap({ treeData = {}, onTreeClick }) {
+  /* ─── layout constants ─────────────────────────────────────────── */
+  const rows     = 25;
+  const cols     = 8;
+  const size     = 28;   // width & height of each square
+  const spacing  = 12;   // gap between squares
+  const iconSize = 12;   // width & height of each PNG inside the square
 
-  const getRecords = (id) => {
-    const val = treeData[id];
-    return !val ? [] : Array.isArray(val) ? val : [val];
-  };
+  /* ─── shared assets & state ────────────────────────────────────── */
+  const { tree: treeImg, bug: bugImg, clock: clockImg } = useIcons();
+  const { signalOn } = useSignalLights();   // true = colored, false = gray
 
+  /* ─── build all Konva nodes ───────────────────────────────────── */
   const nodes = [];
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const id = `Tree-${r + 1}-${c + 1}`;
-      const records = getRecords(id);
-      const { stale, bug, balance, power } = computeCurrentColors(records);
+      const records = treeData[id] || [];
+
+      const { treeOn, bugOn, clockOn } = computeTriggers(records);
 
       const x = c * (size + spacing);
       const y = r * (size + spacing);
 
-      // Override: stale data -> full yellow square
-      if (stale) {
-        nodes.push(
-          <Group key={id} onClick={() => onTreeClick(id)} onTap={() => onTreeClick(id)}>
-            <Rect x={x} y={y} width={size} height={size} fill="yellow" />
-            <Text
-              x={x + size / 2}
-              y={y + size + 2}
-              text={TREE_NICKNAMES[id] ?? id}
-              fontSize={10}
-              fill="black"
-              align="center"
-              offsetX={(TREE_NICKNAMES[id] ?? id).length * 5}
-            />
-          </Group>
-        );
-        continue;
-      }
+      /* ----- icon strip (single click target) -------------------- */
+      nodes.push(
+        <Group
+          key={id}
+          x={x}
+          y={y}
+          onClick={() => onTreeClick(id)}
+          onTap={() => onTreeClick(id)}
+        >
+          {/* border for pointer feedback */}
+          <Rect
+            width={size}
+            height={size}
+            stroke="#999"
+            strokeWidth={1}
+            fillEnabled={false}
+          />
 
-      // Normal ring rendering
-
-          const sliceWidth = size / 3;
-    nodes.push(
-      <Group key={id} onClick={()=>onTreeClick(id)}>
-        {/* border & hitbox */}
-        <Rect x={x} y={y} width={size} height={size} stroke="#ccc" strokeWidth={1} fillEnabled={false} />
-        <Rect x={x} y={y} width={size} height={size} fill="rgba(0,0,0,0.001)" />
-        {/* vertical slices: green, blue, red */}
-        {power   && <Rect x={x}               y={y} width={sliceWidth}   height={size} fill="green" />}  
-        {balance && <Rect x={x + sliceWidth} y={y} width={sliceWidth}   height={size} fill="blue" />}  
-        {bug     && <Rect x={x + 2*sliceWidth} y={y} width={sliceWidth} height={size} fill="red" />}    
-
-
-          {/* label */}
-          <Text
-            x={x + size / 2}
-            y={y + size + 2}
-            text={TREE_NICKNAMES[id] ?? id}
-            fontSize={10}
-            fill="black"
-            align="center"
-            offsetX={(TREE_NICKNAMES[id] ?? id).length * 5}
+          {/* three icons, horizontally centered */}
+          <KImage
+            image={treeImg}
+            x={xCenter(size, iconSize, 0)}
+            y={(size - iconSize) / 2}
+            width={iconSize}
+            height={iconSize}
+            opacity={signalOn && treeOn ? 1 : 0.25}
+          />
+          <KImage
+            image={bugImg}
+            x={xCenter(size, iconSize, 1)}
+            y={(size - iconSize) / 2}
+            width={iconSize}
+            height={iconSize}
+            opacity={signalOn && bugOn ? 1 : 0.25}
+          />
+          <KImage
+            image={clockImg}
+            x={xCenter(size, iconSize, 2)}
+            y={(size - iconSize) / 2}
+            width={iconSize}
+            height={iconSize}
+            opacity={signalOn && clockOn ? 1 : 0.25}
           />
         </Group>
+      );
+
+      /* ----- (optional) tiny label under each square ------------- */
+      nodes.push(
+        <Text
+          key={`${id}-label`}
+          x={x}
+          y={y + size + 2}
+          width={size}
+          text={`${r + 1}-${c + 1}`}          // shows “1-1”, “1-2”, …
+          fontSize={10}
+          align="center"
+        />
       );
     }
   }
 
+  /* ─── Stage size ──────────────────────────────────────────────── */
+  const stageW = cols * (size + spacing);
+  const stageH = rows * (size + spacing) + 12;  // +label height
+
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'auto' }}>
-      <Stage width={gridW} height={gridH}>
+    <div style={{ overflow: "auto", maxHeight: "90vh" }}>
+      <Stage width={stageW} height={stageH}>
         <Layer>{nodes}</Layer>
       </Stage>
     </div>
   );
-};
+}
 
-export default FarmMap;
+/* ------------------------------------------------------------------ */
+/* Helper: center each icon with a small offset                       */
+/* i = 0,1,2 → first/second/third icon                                */
+/* ------------------------------------------------------------------ */
+function xCenter(square, icon, i) {
+  const stripW = 3 * icon;
+  const left   = (square - stripW) / 2;
+  return left + i * icon;
+}
