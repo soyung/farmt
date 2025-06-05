@@ -4,6 +4,10 @@ import FarmMap from './FarmMap.jsx';
 import TreeModal from './TreeModal.jsx';
 import { supabase } from './supabaseClient';
 
+import IconLink from './components/IconLink';
+import waterlink from './assets/icons/global_water.svg';
+import trtlink from './assets/icons/global_trt.svg';
+
 
 export default function App() {
   const [treeData, setTreeData] = useState({});     // { id: [rows...] }
@@ -63,25 +67,44 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  /* ───────────────────────────── UI ───────────────────────────── */
-  return (
-    <div style={{ maxWidth: 600, margin: '0 auto', padding: '1rem' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-        Podowa App v0.0.3
+ /* ───────────────────────────── UI ───────────────────────────── */
+return (
+  <div style={{ maxWidth: 600, margin: '0 auto', padding: '1rem' }}>
+
+    {/* ▸ title + icon links in the same relative container */}
+    <div style={{ position: 'relative' }}>
+      <h1 style={{ fontSize: '1.3rem', fontFamily: '"Arvo", normal' }}>
+        Podowa App v0.1.0
       </h1>
 
-      <FarmMap
-        treeData={treeData}          // arrays per id
-        onTreeClick={setSelectedTree}
-      />
-
-      {selectedTree && (
-        <TreeModal
-          treeId={selectedTree}
-          initialData={null}         // blank sheet each day
-          onClose={() => setSelectedTree(null)}
-        />
-      )}
+      {/* top-right corner icons */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 3,
+        }}
+      >
+        <IconLink href="https://example.com/water" src={waterlink}  alt="global water" />
+        <IconLink href="https://example.com/trt"   src={trtlink}    alt="global treatment" />
+      </div>
     </div>
-  );
+
+    <FarmMap
+      treeData={treeData}
+      onTreeClick={setSelectedTree}
+    />
+
+    {selectedTree && (
+      <TreeModal
+        treeId={selectedTree}
+        initialData={null}
+        onClose={() => setSelectedTree(null)}
+      />
+    )}
+  </div>
+);
 }
