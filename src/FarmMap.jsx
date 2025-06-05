@@ -75,6 +75,10 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const id = `Tree-${r + 1}-${c + 1}`;
+      const numericId = `${r + 1}-${c + 1}`;      // "1-1"
+      const lbl       = labels[id] || {};         // {name,color} or {}
+      const displayId = lbl.name ? `${numericId} ${lbl.name}` : numericId;
+
       const records = treeData[id] || [];
 
       const { treeOn, bugOn, clockOn } = computeTriggers(records);
@@ -88,8 +92,8 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
           key={id}
           x={x}
           y={y}
-          onClick={() => onTreeClick(id)}
-          onTap={() => onTreeClick(id)}
+          onClick={() => onTreeClick(displayId)}
+          onTap={() => onTreeClick(displayId)}
         >
 
           {/* invisible hit-box so the whole icon strip is easy to tap */}
@@ -97,7 +101,7 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
             width={cellW}
             height={cellH}
             fill="transparent"   // 0.1 % opaque – visible? no. clickable? yes.
-            listening={true}
+            listening={false}
         />
 
           {/* three icons, horizontally centered */}
@@ -129,23 +133,21 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
       );
 
       /* ----- tiny label under each square ------------- */
-const lbl      = labels[id] || {};
-const labelTxt = lbl.name ? `${r+1}-${c+1} ${lbl.name}` : `${r+1}-${c+1}`;
-const labelGap = 8;
+
 
   nodes.push(
     <Group
       key={`${id}-label`}
       x={x}
-      y={y + iconSize + labelGap}          /* closer to icons */
+      y={y + iconSize + 8}          /* closer to icons */
       onClick={() => setEditId(id)}
       onTap={() => setEditId(id)}
     >
-     <Rect width={cellW} height={10} fill={lbl.color || '#ffffff'} />
+     <Rect width={cellW} height={10} fill={lbl.color || '#ffffff'} listening={false}/>
     <Text
       width={cellW}
       height={10}
-      text={labelTxt}
+      text={displayId}
       fontSize={8}
       align="center"
       verticalAlign="middle"

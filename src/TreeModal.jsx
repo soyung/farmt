@@ -231,13 +231,50 @@ async function saveChanges() {
     >
       <div
         style={{
-          position: 'relative', backgroundColor: 'white', padding: '1rem', borderRadius: '0.5rem',
+          position: 'relative', backgroundColor: 'white', padding: '0 1rem 1rem', borderRadius: '0.5rem',
           maxWidth: '700px', width: '90%', maxHeight: '90vh', overflowY: 'auto', zIndex: 1000,
         }}
       >
-        <div style={{ position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 10, padding: '0.5rem', borderBottom: '1px solid #ccc' }}>
-          <h2>{treeId}</h2>
-        </div>
+{/* ── Frosted sticky header (no border, inline label) ── */}
+<div
+  style={{
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+    padding: '1rem 1rem',
+    backdropFilter: 'blur(6px)',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    /* removed borderBottom / outlines */
+    display: 'flex',
+    alignItems: 'center',
+  }}
+>
+  {(() => {
+    const parts  = treeId.split(' ');
+    const num    = parts[0];               // "1-1"
+    const label  = parts.slice(1).join(' '); // optional
+    return (
+      <>
+        <span style={{ fontSize: '1.4rem', fontWeight: 600 }}>
+          {num}
+        </span>
+        {label && (
+          <span
+            style={{
+              marginLeft: 8,          // small gap
+              fontSize: '1.1rem',
+              color: '#555',
+              fontWeight: 500,
+            }}
+          >
+            {label}
+          </span>
+        )}
+      </>
+    );
+  })()}
+</div>
+
 
 {/* ---------- HISTORICAL DATA CHART ---------- */}
 {history.length > 0 && (
