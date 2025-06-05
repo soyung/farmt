@@ -1,12 +1,12 @@
 // src/hooks/useIcons.js
 import useImage from 'use-image';
-import treePNG  from '../assets/icons/tree.png';
-import bugPNG   from '../assets/icons/bug.png';
-import clockPNG from '../assets/icons/clock.png';
+import treeSVG  from '../assets/icons/tree.svg';
+import bugSVG   from '../assets/icons/bug.svg';
+import clockSVG from '../assets/icons/clock.svg';
 
 export default function useIcons() {
-  const [tree]  = useImage(treePNG);
-  const [bug]   = useImage(bugPNG);
-  const [clock] = useImage(clockPNG);
+  const [tree]  = useImage(treeSVG);
+  const [bug]   = useImage(bugSVG);
+  const [clock] = useImage(clockSVG);
   return { tree, bug, clock };
 }
