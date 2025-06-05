@@ -4,8 +4,6 @@ import FarmMap from './FarmMap.jsx';
 import TreeModal from './TreeModal.jsx';
 import { supabase } from './supabaseClient';
 
-import { SignalLightsProvider } from './SignalLightsContext';
-
 
 export default function App() {
   const [treeData, setTreeData] = useState({});     // { id: [rows...] }

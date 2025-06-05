@@ -11,6 +11,9 @@ import {
 
 import useIcons from "./hooks/useIcons";
 import { useSignalLights } from "./SignalLightsContext"; // ← make sure this file exists!
+import RenamePopup from "./RenamePopup";
+import { useState } from "react";
+import { useLabels } from "./LabelContext";
 
 /* ------------------------------------------------------------------ */
 /* Utility helpers                                                    */
@@ -54,13 +57,17 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   /* ─── layout constants ─────────────────────────────────────────── */
   const rows     = 25;
   const cols     = 8;
-  const size     = 28;   // width & height of each square
-  const spacing  = 12;   // gap between squares
+  const cellW    = 44;   // ⬅️ width of one tree zone  (fits 3 icons + margin)
+  const cellH    = 26;   // ⬅️ height (icon 12px + 3px gap + 8px text)
+  const gapX     = 6;    // horizontal gap
+  const gapY     = 8;    // vertical gap
   const iconSize = 12;   // width & height of each PNG inside the square
 
   /* ─── shared assets & state ────────────────────────────────────── */
   const { tree: treeImg, bug: bugImg, clock: clockImg } = useIcons();
   const { signalOn } = useSignalLights();   // true = colored, false = gray
+  const { labels, upsert } = useLabels();
+  const [editId, setEditId] = useState(null); 
 
   /* ─── build all Konva nodes ───────────────────────────────────── */
   const nodes = [];
@@ -72,8 +79,8 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
 
       const { treeOn, bugOn, clockOn } = computeTriggers(records);
 
-      const x = c * (size + spacing);
-      const y = r * (size + spacing);
+      const x = c * (cellW + gapX);
+      const y = r * (cellH + gapY);
 
       /* ----- icon strip (single click target) -------------------- */
       nodes.push(
@@ -84,36 +91,36 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
           onClick={() => onTreeClick(id)}
           onTap={() => onTreeClick(id)}
         >
-          {/* border for pointer feedback */}
+
+          {/* invisible hit-box so the whole icon strip is easy to tap */}
           <Rect
-            width={size}
-            height={size}
-            stroke="#999"
-            strokeWidth={1}
-            fillEnabled={false}
-          />
+            width={cellW}
+            height={cellH}
+            fill="transparent"   // 0.1 % opaque – visible? no. clickable? yes.
+            listening={true}
+        />
 
           {/* three icons, horizontally centered */}
           <KImage
             image={treeImg}
-            x={xCenter(size, iconSize, 0)}
-            y={(size - iconSize) / 2}
+            x={xCenter(cellW, iconSize, 0)}
+            y={(cellH - iconSize) / 2}
             width={iconSize}
             height={iconSize}
             opacity={signalOn && treeOn ? 1 : 0.25}
           />
           <KImage
             image={bugImg}
-            x={xCenter(size, iconSize, 1)}
-            y={(size - iconSize) / 2}
+            x={xCenter(cellW, iconSize, 1)}
+            y={(cellH - iconSize) / 2}
             width={iconSize}
             height={iconSize}
             opacity={signalOn && bugOn ? 1 : 0.25}
           />
           <KImage
             image={clockImg}
-            x={xCenter(size, iconSize, 2)}
-            y={(size - iconSize) / 2}
+            x={xCenter(cellW, iconSize, 2)}
+            y={(cellH - iconSize) / 2}
             width={iconSize}
             height={iconSize}
             opacity={signalOn && clockOn ? 1 : 0.25}
@@ -121,40 +128,61 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
         </Group>
       );
 
-      /* ----- (optional) tiny label under each square ------------- */
-      nodes.push(
-        <Text
-          key={`${id}-label`}
-          x={x}
-          y={y + size + 2}
-          width={size}
-          text={`${r + 1}-${c + 1}`}          // shows “1-1”, “1-2”, …
-          fontSize={10}
-          align="center"
-        />
-      );
+      /* ----- tiny label under each square ------------- */
+const lbl      = labels[id] || {};
+const labelTxt = lbl.name ? `${r+1}-${c+1} ${lbl.name}` : `${r+1}-${c+1}`;
+const labelGap = 8;
+
+  nodes.push(
+    <Group
+      key={`${id}-label`}
+      x={x}
+      y={y + iconSize + labelGap}          /* closer to icons */
+      onClick={() => setEditId(id)}
+      onTap={() => setEditId(id)}
+    >
+     <Rect width={cellW} height={10} fill={lbl.color || '#ffffff'} />
+    <Text
+      width={cellW}
+      height={10}
+      text={labelTxt}
+      fontSize={8}
+      align="center"
+      verticalAlign="middle"
+    />
+     </Group>
+   );
+
     }
   }
 
   /* ─── Stage size ──────────────────────────────────────────────── */
-  const stageW = cols * (size + spacing);
-  const stageH = rows * (size + spacing) + 12;  // +label height
+  const stageW = cols * (cellW + gapX);
+  const stageH = rows * (cellH + gapY);  // +label height
 
   return (
     <div style={{ overflow: "auto", maxHeight: "90vh" }}>
       <Stage width={stageW} height={stageH}>
         <Layer>{nodes}</Layer>
       </Stage>
+        {editId && (
+           <RenamePopup
+            id={editId}
+            current={labels[editId]}
+            onSave={(payload) => upsert(editId, payload)}
+            onClose={() => setEditId(null)}
+          />
+        )}
     </div>
   );
 }
 
+const iconGap = 2;
 /* ------------------------------------------------------------------ */
 /* Helper: center each icon with a small offset                       */
 /* i = 0,1,2 → first/second/third icon                                */
 /* ------------------------------------------------------------------ */
-function xCenter(square, icon, i) {
-  const stripW = 3 * icon;
-  const left   = (square - stripW) / 2;
-  return left + i * icon;
+function xCenter(cellWidth, icon, i) {
+  const stripW = 3 * icon + 2 * iconGap;
+  return (cellWidth - stripW) / 2 + i * (icon + iconGap);
 }
