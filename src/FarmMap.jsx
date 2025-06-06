@@ -74,8 +74,8 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const id = `Tree-${r + 1}-${c + 1}`;
-      const numericId = `${r + 1}-${c + 1}`;      // "1-1"
+      const id = `Tree-${c + 1}-${r + 1}`;
+      const numericId = `${c + 1}-${r + 1}`;      // "1-1"
       const lbl       = labels[id] || {};         // {name,color} or {}
       const displayId = lbl.name ? `${numericId} ${lbl.name}` : numericId;
 
@@ -135,25 +135,56 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
       /* ----- tiny label under each square ------------- */
 
 
-  nodes.push(
-    <Group
-      key={`${id}-label`}
-      x={x}
-      y={y + iconSize + 8}          /* closer to icons */
-      onClick={() => setEditId(id)}
-      onTap={() => setEditId(id)}
-    >
-     <Rect width={cellW} height={10} fill={lbl.color || '#ffffff'} listening={false}/>
+// 1. Create a temporary canvas context (only needs to happen once per render).
+//    We can reuse the same context for all labels in this pass.
+if (!FarmMap._textSizer) {
+  const offscreenCanvas = document.createElement('canvas');
+  FarmMap._textSizer = offscreenCanvas.getContext('2d');
+}
+const ctx = FarmMap._textSizer;
+
+// 2. Choose a base font family & starting fontSize (in px):
+const baseFont     = 'sans-serif';
+let   fontSize     = 8;   // start here
+const minFontSize  = 4;   // do not go smaller than this
+const cellPadding  = 2;   // extra space so text doesn’t butt right up against Rect edge
+
+// 3. Measure and shrink loop:
+ctx.font = `${fontSize}px ${baseFont}`;
+let textWidth = ctx.measureText(displayId).width;
+while (textWidth + cellPadding * 2 > cellW && fontSize > minFontSize) {
+  fontSize--;
+  ctx.font = `${fontSize}px ${baseFont}`;
+  textWidth = ctx.measureText(displayId).width;
+}
+
+// ── Now render the label with the computed fontSize ──
+nodes.push(
+  <Group
+    key={`${id}-label`}
+    x={x}
+    y={y + iconSize + 8}
+    onClick={() => setEditId(id)}
+    onTap={() => setEditId(id)}
+  >
+    <Rect
+      width={cellW}
+      height={10}
+      fill={lbl.color || '#ffffff'}
+      listening={false}
+    />
     <Text
       width={cellW}
       height={10}
       text={displayId}
-      fontSize={8}
+      fontSize={fontSize}
+      fontFamily={baseFont}
       align="center"
       verticalAlign="middle"
+      ellipsis={true}
     />
-     </Group>
-   );
+  </Group>
+);
 
     }
   }
