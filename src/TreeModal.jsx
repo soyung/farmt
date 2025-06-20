@@ -637,7 +637,7 @@ async function saveChanges() {
         </div>
 
 
-      <div style={{ marginBottom: '2rem' }}>
+      <div style={{ marginBottom: '0.5rem' }}>
   <button
     onClick={toggleShowTable}
     style={{
