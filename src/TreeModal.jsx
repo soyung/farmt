@@ -97,6 +97,8 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
 
   const [newImage, setNewImage] = useState(null);
   const [history, setHistory] = useState([]);
+  const [showTable, setShowTable] = useState(false);
+  const toggleShowTable = () => setShowTable(!showTable);
 
   useEffect(() => {
     async function fetchHistory() {
@@ -119,8 +121,13 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
     }
     fetchHistory();
   }, [treeId]);
+ 
+  const cellStyle = {
+    border: '1px solid #ccc',
+    padding: '6px 8px',
+    textAlign: 'center',
+  };
 
-  
   // Generic change handler for text inputs.
   function handleChange(field, value) {
     setTreeData((prev) => ({ ...prev, [field]: value }));
@@ -602,7 +609,51 @@ async function saveChanges() {
             style={{ display: 'block', width: '100%', height: '60px' }}
           />
         </div>
+<button
+          onClick={toggleShowTable}
+          style={{
+            marginBottom: '1rem',
+            padding: '0.5rem 1rem',
+            backgroundColor: '#5c6bc0',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px'
+          }}
+        >
+          {showTable ? '간단히 보기' : '더보기'}
+        </button>
 
+        {showTable && (
+          <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f3f3f3' }}>
+                  <th style={cellStyle}>날짜</th>
+                  <th style={cellStyle}>생육시기</th>
+                  <th style={cellStyle}>세력</th>
+                  <th style={cellStyle}>균형</th>
+                  <th style={cellStyle}>해충</th>
+                  <th style={cellStyle}>코멘트</th>
+                  <th style={cellStyle}>생산자</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((row, idx) => (
+                  <tr key={idx}>
+                    <td style={cellStyle}>{row.date}</td>
+                    <td style={cellStyle}>{SEASON_NAMES[row.season]}</td>
+                    <td style={cellStyle}>{row.power}</td>
+                    <td style={cellStyle}>{row.balance}</td>
+                    <td style={cellStyle}>{row.bugs}</td>
+                    <td style={cellStyle}>{row.comments}</td>
+                    <td style={cellStyle}>{row.producer}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        
         {/* SAVE & CANCEL BUTTONS */}
         <button
           onClick={saveChanges}
