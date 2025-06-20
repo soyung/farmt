@@ -655,7 +655,7 @@ async function saveChanges() {
 
 
         {showTable && (
-          <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
+          <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '0.2rem' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f3f3f3' }}>
