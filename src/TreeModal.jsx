@@ -122,6 +122,32 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
     fetchHistory();
   }, [treeId]);
  
+     useEffect(() => {
+    async function fetchHistory() {
+     const numericPart = treeId.split(' ')[0];
+     const realId = `Tree-${numericPart}`;
+     const { data, error } = await supabase
+      .from('trees')
+      .select('*')
+      .eq('id', realId)
+      .order('date');
+      if (!error && data) {
+        const formattedData = data.map(d => ({
+  date: d.date,
+  season: d.season,
+  power: d.power,
+  balance: d.balance,
+  bugs: d.bugs,
+  comments: d.comments,
+  producer: d.producer || '',
+  images: d.images || []
+}));
+        setHistory(formattedData);
+      }
+    }
+    fetchHistory();
+  }, [treeId]);
+
   const cellStyle = {
     border: '1px solid #ccc',
     padding: '6px 8px',
@@ -609,19 +635,24 @@ async function saveChanges() {
             style={{ display: 'block', width: '100%', height: '60px' }}
           />
         </div>
-<button
-          onClick={toggleShowTable}
-          style={{
-            marginBottom: '1rem',
-            padding: '0.5rem 1rem',
-            backgroundColor: '#5c6bc0',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px'
-          }}
-        >
-          {showTable ? '간단히 보기' : '더보기'}
-        </button>
+
+
+      <div style={{ marginBottom: '2rem' }}>
+  <button
+    onClick={toggleShowTable}
+    style={{
+      padding: '0.5rem 1rem',
+      backgroundColor: '#5c6bc0',
+      color: 'white',
+      border: 'none',
+      borderRadius: '5px'
+    }}
+  >
+    {showTable ? '간단히 보기' : '더보기'}
+  </button>
+        </div>
+
+
 
         {showTable && (
           <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
@@ -634,6 +665,7 @@ async function saveChanges() {
                   <th style={cellStyle}>균형</th>
                   <th style={cellStyle}>해충</th>
                   <th style={cellStyle}>코멘트</th>
+                  <th style={cellStyle}>사진</th>
                   <th style={cellStyle}>생산자</th>
                 </tr>
               </thead>
@@ -646,6 +678,11 @@ async function saveChanges() {
                     <td style={cellStyle}>{row.balance}</td>
                     <td style={cellStyle}>{row.bugs}</td>
                     <td style={cellStyle}>{row.comments}</td>
+                    <td style={cellStyle}>
+                      {row.images && row.images.length > 0 ? (
+                        <img src={row.images[0]} alt="기록 이미지" style={{ width: '50px', borderRadius: '4px' }} />
+                      ) : '-'}
+                    </td>
                     <td style={cellStyle}>{row.producer}</td>
                   </tr>
                 ))}
@@ -653,7 +690,7 @@ async function saveChanges() {
             </table>
           </div>
         )}
-        
+
         {/* SAVE & CANCEL BUTTONS */}
         <button
           onClick={saveChanges}
