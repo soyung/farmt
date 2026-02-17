@@ -87,6 +87,23 @@
   transition: all 0.2s;
 }
 
+.change-password-button {
+  padding: 10px 20px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.change-password-button:hover {
+  background: #5568d3;
+  transform: translateY(-1px);
+}
+
 .logout-button:hover {
   background: #c53030;
   transform: translateY(-1px);
@@ -101,6 +118,9 @@
   flex: 1;
   padding: 24px;
   overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 /* Loading state */
@@ -222,6 +242,7 @@
 
   .app-content {
     padding: 32px 40px;
+    zoom: 1.5; /* Make everything 50% larger on desktop */
   }
 }
 
