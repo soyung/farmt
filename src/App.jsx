@@ -4,6 +4,7 @@ import FarmMap from './FarmMap.jsx';
 import TreeModal from './TreeModal.jsx';
 import Login from './components/Login.jsx';
 import ExportButton from './components/ExportButton.jsx';
+import ChangePassword from './components/ChangePassword.jsx';
 import { supabase } from './supabaseClient';
 import './App.css';
 
@@ -16,6 +17,7 @@ export default function App() {
   const [selectedTree, setSelectedTree] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // Check Supabase auth session on mount
   useEffect(() => {
@@ -123,6 +125,9 @@ export default function App() {
               </div>
               <ExportButton />
               <span className="welcome-text">{user.email}</span>
+              <button onClick={() => setShowChangePassword(true)} className="change-password-button">
+                Change Password
+              </button>
               <button onClick={handleLogout} className="logout-button">
                 Logout
               </button>
@@ -143,6 +148,10 @@ export default function App() {
             initialData={null}
             onClose={() => setSelectedTree(null)}
           />
+        )}
+
+        {showChangePassword && (
+          <ChangePassword onClose={() => setShowChangePassword(false)} />
         )}
       </div>
     </div>
