@@ -2,24 +2,46 @@
 import React, { useState, useEffect } from 'react';
 import FarmMap from './FarmMap.jsx';
 import TreeModal from './TreeModal.jsx';
+import Login from './components/Login.jsx';
+import ExportButton from './components/ExportButton.jsx';
 import { supabase } from './supabaseClient';
+import './App.css';
 
 import IconLink from './components/IconLink';
 import waterlink from './assets/icons/global_water.svg';
 import trtlink from './assets/icons/global_trt.svg';
 
-
 export default function App() {
-  const [treeData, setTreeData] = useState({});     // { id: [rows...] }
+  const [treeData, setTreeData] = useState({});
   const [selectedTree, setSelectedTree] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  /* ─────────────────────────── LOAD ALL ROWS ────────────────────────── */
+  // Check Supabase auth session on mount
   useEffect(() => {
+    // Get current session (persists for 30 days automatically)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load tree data (only when authenticated)
+  useEffect(() => {
+    if (!user) return;
+
     async function loadAllRows() {
       const { data, error } = await supabase
         .from('trees')
         .select('*')
-        .order('date', { ascending: false });   // newest first
+        .order('date', { ascending: false });
 
       if (error) {
         console.error('Error fetching trees:', error);
@@ -28,12 +50,11 @@ export default function App() {
 
       const grouped = {};
       data.forEach((row) => {
-        (grouped[row.id] ??= []).push(row);     // push into array
+        (grouped[row.id] ??= []).push(row);
       });
       setTreeData(grouped);
     }
 
-    /* ─────────────── realtime subscription (insert / update) ───────── */
     function subscribeRows() {
       return supabase
         .channel('farm-tracker-channel')
@@ -43,16 +64,12 @@ export default function App() {
           ({ eventType, new: row, old }) => {
             setTreeData((prev) => {
               const copy = { ...prev };
-
               if (eventType === 'DELETE') {
                 if (copy[old.id]) {
-                  copy[old.id] = copy[old.id].filter(
-                    (r) => !(r.date === old.date)
-                  );
+                  copy[old.id] = copy[old.id].filter((r) => r.date !== old.date);
                   if (copy[old.id].length === 0) delete copy[old.id];
                 }
               } else {
-                // INSERT or UPDATE → prepend newest row
                 (copy[row.id] ??= []).unshift(row);
               }
               return copy;
@@ -65,46 +82,69 @@ export default function App() {
     loadAllRows();
     const channel = subscribeRows();
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, [user]);
 
- /* ───────────────────────────── UI ───────────────────────────── */
-return (
-  <div style={{ maxWidth: 600, margin: '0 auto', padding: '1rem' }}>
+  const handleLogin = (user) => {
+    setUser(user);
+  };
 
-    {/* ▸ title + icon links in the same relative container */}
-    <div style={{ position: 'relative' }}>
-      <h1 style={{ fontSize: '1.3rem', fontFamily: '"Arvo", normal' }}>
-        Podowa App v0.1.0
-      </h1>
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setTreeData({});
+  };
 
-      {/* top-right corner icons */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 3,
-        }}
-      >
-        <IconLink href="https://example.com/water" src={waterlink}  alt="global water" />
-        <IconLink href="https://example.com/trt"   src={trtlink}    alt="global treatment" />
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  return (
+    <div className="app-wrapper">
+      <div className="app-container">
+        <header className="app-header">
+          <div className="header-content">
+            <div className="header-title">
+              <h1>Podowa App</h1>
+              <span className="version">v0.1.0</span>
+            </div>
+            <div className="header-actions">
+              <div className="icon-links">
+                <IconLink href="https://example.com/water" src={waterlink} alt="global water" />
+                <IconLink href="https://example.com/trt" src={trtlink} alt="global treatment" />
+              </div>
+              <ExportButton />
+              <span className="welcome-text">{user.email}</span>
+              <button onClick={handleLogout} className="logout-button">
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="app-content">
+          <FarmMap
+            treeData={treeData}
+            onTreeClick={setSelectedTree}
+          />
+        </main>
+
+        {selectedTree && (
+          <TreeModal
+            treeId={selectedTree}
+            initialData={null}
+            onClose={() => setSelectedTree(null)}
+          />
+        )}
       </div>
     </div>
-
-    <FarmMap
-      treeData={treeData}
-      onTreeClick={setSelectedTree}
-    />
-
-    {selectedTree && (
-      <TreeModal
-        treeId={selectedTree}
-        initialData={null}
-        onClose={() => setSelectedTree(null)}
-      />
-    )}
-  </div>
-);
+  );
 }

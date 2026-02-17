@@ -6,7 +6,17 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 
 // ---------- HELPER FUNCTIONS ---------- //
-
+// Helper to parse the actual tree ID from display ID
+function parseTreeId(treeId) {
+// If starts with "Tree-", remove it
+  if (treeId.startsWith('Tree-')) {
+    return treeId.replace('Tree-', '');  // "Tree-1-1" → "1-1"
+  }
+  
+  // If it's "1-1 Label", extract just "1-1"
+  const numericPart = treeId.split(' ')[0];
+  return numericPart;  // "1-1 소평옥" → "1-1"
+}
 // Converts "YYYY-MM-DD" to "MM/DD/YYYY"
 function formatDateForDisplay(isoDate) {
   if (!isoDate) return "";
@@ -84,6 +94,7 @@ const SEASON_NAMES = {
 const TreeModal = ({ treeId, initialData, onClose }) => {
   const todayMMDDYYYY = getTodayMMDDYYYY();
 
+  const actualTreeId = parseTreeId(treeId);
   const [treeData, setTreeData] = useState(() => ({
     date: todayMMDDYYYY,
     season: '',
@@ -100,54 +111,41 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
   const [showTable, setShowTable] = useState(false);
   const toggleShowTable = () => setShowTable(!showTable);
 
-  useEffect(() => {
-    async function fetchHistory() {
-     const numericPart = treeId.split(' ')[0];      
-     const realId      = `Tree-${numericPart}`;     
-     const { data, error } = await supabase
+useEffect(() => {
+  async function fetchHistory() {
+    console.log('🔍 Fetching history for:', actualTreeId);  
+    
+    const { data, error } = await supabase
       .from('trees')
       .select('*')
-      .eq('id', realId)                             // use the actual PK
+      .eq('id', actualTreeId)  
       .order('date');
-      if (!error && data) {
-        const formattedData = data.map(d => ({
-          date: d.date,
-          power: parseInt(d.power) || 0,
-          balance: parseInt(d.balance) || 0,
-          bugs: parseInt(d.bugs) || 0,
-        }));
-        setHistory(formattedData);
-      }
+      
+    console.log('📊 Query result:', { data, error });  
+    
+    if (!error && data) {
+      const formattedData = data.map(d => ({
+        date: d.date,
+        season: d.season,
+        power: d.power,
+        balance: d.balance,
+        bugs: d.bugs,
+        comments: d.comments || '',
+        producer: d.producer || '',
+        images: d.images || [],
+        powerJ: (parseInt(d.power) || 0),
+        balanceJ: (parseInt(d.balance) || 0),
+        bugsJ: (parseInt(d.bugs) || 0),
+      }));
+      
+      console.log('✅ Formatted data:', formattedData);
+      setHistory(formattedData);
     }
-    fetchHistory();
-  }, [treeId]);
+  }
+  fetchHistory();
+}, [actualTreeId]); 
  
-     useEffect(() => {
-    async function fetchHistory() {
-     const numericPart = treeId.split(' ')[0];
-     const realId = `Tree-${numericPart}`;
-     const { data, error } = await supabase
-      .from('trees')
-      .select('*')
-      .eq('id', realId)
-      .order('date');
-      if (!error && data) {
-        const formattedData = data.map(d => ({
-  date: d.date,
-  season: d.season,
-  power: d.power,
-  balance: d.balance,
-  bugs: d.bugs,
-  comments: d.comments,
-  producer: d.producer || '',
-  images: d.images || []
-}));
-        setHistory(formattedData);
-      }
-    }
-    fetchHistory();
-  }, [treeId]);
-
+ 
   const cellStyle = {
     border: '1px solid #ccc',
     padding: '6px 8px',
@@ -233,7 +231,7 @@ async function saveChanges() {
   const isoDate = parseDateForSupabase(treeData.date);
 
   const row = {
-    id: treeId,            // tree name (e.g. "Tree-1-1")
+    id: actualTreeId,            
     date: isoDate,         // date column must be part of the row
     season: treeData.season ? Number(treeData.season) : null,
     power:   treeData.power,
@@ -315,15 +313,15 @@ async function saveChanges() {
   <div style={{ height: 220, marginBottom: 16 }}>
     <ResponsiveContainer width="100%" height="100%">
       {/* jitter once so points don’t overlap */}
-      <LineChart
-        data={history.map(h => ({
-          ...h,
-          powerJ: (parseInt(h.power)   || 0) + (Math.random() - 0.5) * 0.5,
-          balanceJ:(parseInt(h.balance)|| 0) + (Math.random() - 0.5) * 0.5,
-          bugsJ:   (parseInt(h.bugs)   || 0) + (Math.random() - 0.5) * 0.5,
-        }))}
-        margin={{ top: 10, right: 20 }}
-      >
+<LineChart
+  data={history.map(h => ({
+    ...h,
+    powerJ: (h.powerJ || 0) + (Math.random() - 0.5) * 0.5,
+    balanceJ: (h.balanceJ || 0) + (Math.random() - 0.5) * 0.5,
+    bugsJ: (h.bugsJ || 0) + (Math.random() - 0.5) * 0.5,
+  }))}
+  margin={{ top: 10, right: 20 }}
+>
         {/* uniform thin grid */}
         <CartesianGrid vertical={false} horizontal={false} />
 

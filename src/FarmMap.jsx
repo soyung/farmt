@@ -92,8 +92,8 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
           key={id}
           x={x}
           y={y}
-          onClick={() => onTreeClick(displayId)}
-          onTap={() => onTreeClick(displayId)}
+          onClick={() => onTreeClick(id)}
+          onTap={() => onTreeClick(id)}
         >
 
           {/* invisible hit-box so the whole icon strip is easy to tap */}
