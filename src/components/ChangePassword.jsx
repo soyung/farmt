@@ -1,157 +1,133 @@
-// src/App.jsx
-import React, { useState, useEffect } from 'react';
-import FarmMap from './FarmMap.jsx';
-import TreeModal from './TreeModal.jsx';
-import Login from './components/Login.jsx';
-import ExportButton from './components/ExportButton.jsx';
-import ChangePassword from './components/ChangePassword.jsx';
-import { supabase } from './supabaseClient';
-import './App.css';
+// src/components/ChangePassword.jsx
+import { useState } from 'react';
+import { supabase } from '../supabaseClient';
 
-import IconLink from './components/IconLink';
-import waterlink from './assets/icons/global_water.svg';
-import trtlink from './assets/icons/global_trt.svg';
+export default function ChangePassword({ onClose }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-export default function App() {
-  const [treeData, setTreeData] = useState({});
-  const [selectedTree, setSelectedTree] = useState(null);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showChangePassword, setShowChangePassword] = useState(false);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
 
-  // Check Supabase auth session on mount
-  useEffect(() => {
-    // Get current session (persists for 30 days automatically)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    if (newPassword !== confirm) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      setError(error.message);
       setLoading(false);
-    });
-
-    // Listen for auth changes (login/logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Load tree data (only when authenticated)
-  useEffect(() => {
-    if (!user) return;
-
-    async function loadAllRows() {
-      const { data, error } = await supabase
-        .from('trees')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching trees:', error);
-        return;
-      }
-
-      const grouped = {};
-      data.forEach((row) => {
-        (grouped[row.id] ??= []).push(row);
-      });
-      setTreeData(grouped);
+      return;
     }
 
-    function subscribeRows() {
-      return supabase
-        .channel('farm-tracker-channel')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'trees' },
-          ({ eventType, new: row, old }) => {
-            setTreeData((prev) => {
-              const copy = { ...prev };
-              if (eventType === 'DELETE') {
-                if (copy[old.id]) {
-                  copy[old.id] = copy[old.id].filter((r) => r.date !== old.date);
-                  if (copy[old.id].length === 0) delete copy[old.id];
-                }
-              } else {
-                (copy[row.id] ??= []).unshift(row);
-              }
-              return copy;
-            });
-          }
-        )
-        .subscribe();
-    }
-
-    loadAllRows();
-    const channel = subscribeRows();
-    return () => supabase.removeChannel(channel);
-  }, [user]);
-
-  const handleLogin = (user) => {
-    setUser(user);
+    setSuccess(true);
+    setLoading(false);
+    setTimeout(() => onClose(), 1500);
   };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setTreeData({});
-  };
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
-  }
 
   return (
-    <div className="app-wrapper">
-      <div className="app-container">
-        <header className="app-header">
-          <div className="header-content">
-            <div className="header-title">
-              <h1>Podowa App</h1>
-              <span className="version">v0.1.0</span>
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+    }}>
+      <div style={{
+        background: 'white', padding: '2rem', borderRadius: '12px',
+        width: '90%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      }}>
+        <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.3rem' }}>Change Password</h2>
+
+        {success ? (
+          <p style={{ color: 'green', textAlign: 'center', fontSize: '1.1rem' }}>
+            ✅ Password changed!
+          </p>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: '#555' }}>
+                New Password
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                style={{
+                  width: '100%', padding: '10px 12px', border: '2px solid #e2e8f0',
+                  borderRadius: '8px', fontSize: '1rem', boxSizing: 'border-box',
+                }}
+                disabled={loading}
+              />
             </div>
-            <div className="header-actions">
-              <div className="icon-links">
-                <IconLink href="https://example.com/water" src={waterlink} alt="global water" />
-                <IconLink href="https://example.com/trt" src={trtlink} alt="global treatment" />
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: '#555' }}>
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="Re-enter password"
+                style={{
+                  width: '100%', padding: '10px 12px', border: '2px solid #e2e8f0',
+                  borderRadius: '8px', fontSize: '1rem', boxSizing: 'border-box',
+                }}
+                disabled={loading}
+              />
+            </div>
+
+            {error && (
+              <div style={{
+                background: '#fed7d7', color: '#c53030', padding: '10px 12px',
+                borderRadius: '8px', fontSize: '0.9rem', marginBottom: '1rem',
+                borderLeft: '4px solid #fc8181',
+              }}>
+                ⚠️ {error}
               </div>
-              <ExportButton />
-              <span className="welcome-text">{user.email}</span>
-              <button onClick={() => setShowChangePassword(true)} className="change-password-button">
-                Change Password
+            )}
+
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  flex: 1, padding: '12px', background: '#667eea', color: 'white',
+                  border: 'none', borderRadius: '8px', fontSize: '1rem',
+                  fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.6 : 1,
+                }}
+              >
+                {loading ? 'Saving...' : 'Save'}
               </button>
-              <button onClick={handleLogout} className="logout-button">
-                Logout
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                style={{
+                  flex: 1, padding: '12px', background: '#e2e8f0', color: '#4a5568',
+                  border: 'none', borderRadius: '8px', fontSize: '1rem',
+                  fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Cancel
               </button>
             </div>
-          </div>
-        </header>
-
-        <main className="app-content">
-          <FarmMap
-            treeData={treeData}
-            onTreeClick={setSelectedTree}
-          />
-        </main>
-
-        {selectedTree && (
-          <TreeModal
-            treeId={selectedTree}
-            initialData={null}
-            onClose={() => setSelectedTree(null)}
-          />
-        )}
-
-        {showChangePassword && (
-          <ChangePassword onClose={() => setShowChangePassword(false)} />
+          </form>
         )}
       </div>
     </div>
