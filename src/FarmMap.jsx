@@ -51,12 +51,10 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   const iconSize = 12;
   const iconGap  = 2;
 
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
   const stageRef = useRef(null);
-  const rafRef = useRef(null);           // throttle ref
-  const lastDistRef = useRef(null);      // pinch distance ref
-  const gestureRef = useRef({ scale: 1, position: { x: 0, y: 0 } });
+  const lastDistRef = useRef(null);
+  const scaleRef = useRef(1);
+  const posRef = useRef({ x: 0, y: 0 });
 
   // 헤더 높이만큼 Stage 높이 줄이기
   const [stageHeight, setStageHeight] = useState(window.innerHeight);
@@ -71,6 +69,21 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
     return () => window.removeEventListener('resize', calcHeight);
   }, []);
 
+  // 데스크탑에서 초기 스케일 키우기
+  useEffect(() => {
+    const isDesktop = window.innerWidth >= 1025;
+    if (isDesktop) {
+      const initScale = Math.min(window.innerWidth / 500, 2.5);
+      scaleRef.current = initScale;
+      posRef.current = { x: 20, y: 20 };
+      if (stageRef.current) {
+        stageRef.current.scale({ x: initScale, y: initScale });
+        stageRef.current.position({ x: 20, y: 20 });
+        stageRef.current.batchDraw();
+      }
+    }
+  }, [stageHeight]);
+
   const { tree: treeImg, bug: bugImg, clock: clockImg } = useIcons();
   const { signalOn } = useSignalLights();
   const { labels, upsert } = useLabels();
@@ -79,79 +92,85 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   const handleWheel = (e) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
-    const oldScale = scale;
+    const oldScale = scaleRef.current;
     const pointer = stage.getPointerPosition();
     const mousePointTo = {
-      x: (pointer.x - position.x) / oldScale,
-      y: (pointer.y - position.y) / oldScale,
+      x: (pointer.x - posRef.current.x) / oldScale,
+      y: (pointer.y - posRef.current.y) / oldScale,
     };
     const newScale = Math.max(0.5, Math.min(4, e.evt.deltaY > 0 ? oldScale * 0.9 : oldScale * 1.1));
-    setScale(newScale);
-    setPosition({
+    const newPos = {
       x: pointer.x - mousePointTo.x * newScale,
       y: pointer.y - mousePointTo.y * newScale,
-    });
+    };
+    scaleRef.current = newScale;
+    posRef.current = newPos;
+    stage.scale({ x: newScale, y: newScale });
+    stage.position(newPos);
+    stage.batchDraw();
   };
 
-  // 핀치줌 전용 핸들러 (Konva 이벤트 아닌 DOM 이벤트로 처리)
+  // 핀치줌: DOM 직접 → Konva 직접 조작 (React setState 없음 = 렉 없음)
   useEffect(() => {
     const container = stageRef.current?.container();
     if (!container) return;
 
+    const onTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        lastDistRef.current = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+      }
+    };
+
     const onTouchMove = (e) => {
       if (e.touches.length < 2) return;
       e.preventDefault();
+      e.stopPropagation();
 
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const dist = Math.hypot(
-        touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
-      );
-
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
       if (lastDistRef.current === null) { lastDistRef.current = dist; return; }
 
-      const delta = dist - lastDistRef.current;
+      const ratio = dist / lastDistRef.current;
       lastDistRef.current = dist;
 
-      const oldScale = gestureRef.current.scale;
-      const newScale = Math.max(0.5, Math.min(4, oldScale * (1 + delta * 0.01)));
-      const pos = gestureRef.current.position;
+      const stage = stageRef.current;
+      const oldScale = scaleRef.current;
+      const newScale = Math.max(0.5, Math.min(4, oldScale * ratio));
 
-      const midpoint = {
-        x: (touch1.clientX + touch2.clientX) / 2,
-        y: (touch1.clientY + touch2.clientY) / 2,
+      const mid = {
+        x: (t1.clientX + t2.clientX) / 2 - container.getBoundingClientRect().left,
+        y: (t1.clientY + t2.clientY) / 2 - container.getBoundingClientRect().top,
       };
-      const mousePointTo = {
-        x: (midpoint.x - pos.x) / oldScale,
-        y: (midpoint.y - pos.y) / oldScale,
-      };
+      const oldPos = posRef.current;
       const newPos = {
-        x: midpoint.x - mousePointTo.x * newScale,
-        y: midpoint.y - mousePointTo.y * newScale,
+        x: mid.x - ((mid.x - oldPos.x) / oldScale) * newScale,
+        y: mid.y - ((mid.y - oldPos.y) / oldScale) * newScale,
       };
 
-      gestureRef.current = { scale: newScale, position: newPos };
+      scaleRef.current = newScale;
+      posRef.current = newPos;
 
-      if (rafRef.current) return;
-      rafRef.current = requestAnimationFrame(() => {
-        setScale(gestureRef.current.scale);
-        setPosition(gestureRef.current.position);
-        rafRef.current = null;
-      });
+      // React state 없이 Konva 직접 업데이트
+      stage.scale({ x: newScale, y: newScale });
+      stage.position(newPos);
+      stage.batchDraw();
     };
 
     const onTouchEnd = () => { lastDistRef.current = null; };
 
+    container.addEventListener('touchstart', onTouchStart, { passive: false });
     container.addEventListener('touchmove', onTouchMove, { passive: false });
     container.addEventListener('touchend', onTouchEnd);
     return () => {
+      container.removeEventListener('touchstart', onTouchStart);
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
     };
-  }, [scale, position]);
-
-  const handleTouchEnd = () => {};  // DOM 핸들러로 대체됨
+  }, [stageHeight]);
 
   const nodes = [];
 
@@ -277,27 +296,7 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   const stageW = cols * (cellW + gapX);
   const stageH = rows * (cellH + gapY);
 
-  // 브라우저 터치 이벤트 DOM 레벨에서 직접 차단
-  useEffect(() => {
-    const container = stageRef.current?.container();
-    if (!container) return;
 
-    container.style.touchAction = 'none';
-    container.style.userSelect = 'none';
-
-    const preventDefault = (e) => {
-      if (e.touches.length >= 2) e.preventDefault(); // 핀치줌 차단
-    };
-
-    // passive: false 필수 — 이게 없으면 preventDefault 무시됨
-    container.addEventListener('touchstart', preventDefault, { passive: false });
-    container.addEventListener('touchmove', preventDefault, { passive: false });
-
-    return () => {
-      container.removeEventListener('touchstart', preventDefault);
-      container.removeEventListener('touchmove', preventDefault);
-    };
-  }, []);
 
   return (
     <div style={{ 
@@ -316,8 +315,7 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
         draggable
         onWheel={handleWheel}
         onDragEnd={(e) => {
-          setPosition({ x: e.target.x(), y: e.target.y() });
-          gestureRef.current.position = { x: e.target.x(), y: e.target.y() };
+          posRef.current = { x: e.target.x(), y: e.target.y() };
         }}
         pixelRatio={window.devicePixelRatio} 
       >
