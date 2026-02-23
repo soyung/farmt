@@ -54,6 +54,22 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const stageRef = useRef(null);
+  const rafRef = useRef(null);           // throttle ref
+  const lastDistRef = useRef(null);      // pinch distance ref
+  const gestureRef = useRef({ scale: 1, position: { x: 0, y: 0 } });
+
+  // 헤더 높이만큼 Stage 높이 줄이기
+  const [stageHeight, setStageHeight] = useState(window.innerHeight);
+  useEffect(() => {
+    function calcHeight() {
+      const header = document.querySelector('.app-header-bar');
+      const headerH = header ? header.getBoundingClientRect().height : 50;
+      setStageHeight(window.innerHeight - headerH);
+    }
+    calcHeight();
+    window.addEventListener('resize', calcHeight);
+    return () => window.removeEventListener('resize', calcHeight);
+  }, []);
 
   const { tree: treeImg, bug: bugImg, clock: clockImg } = useIcons();
   const { signalOn } = useSignalLights();
@@ -65,66 +81,64 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
     const stage = stageRef.current;
     const oldScale = scale;
     const pointer = stage.getPointerPosition();
-
     const mousePointTo = {
       x: (pointer.x - position.x) / oldScale,
       y: (pointer.y - position.y) / oldScale,
     };
-
-    const newScale = e.evt.deltaY > 0 ? oldScale * 0.9 : oldScale * 1.1;
-    const clampedScale = Math.max(0.5, Math.min(4, newScale));
-
-    setScale(clampedScale);
+    const newScale = Math.max(0.5, Math.min(4, e.evt.deltaY > 0 ? oldScale * 0.9 : oldScale * 1.1));
+    setScale(newScale);
     setPosition({
-      x: pointer.x - mousePointTo.x * clampedScale,
-      y: pointer.y - mousePointTo.y * clampedScale,
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
     });
   };
 
   const handleTouchMove = (e) => {
     e.evt.preventDefault();
-    const stage = stageRef.current;
     const touch1 = e.evt.touches[0];
     const touch2 = e.evt.touches[1];
+    if (!touch1 || !touch2) return;
 
-    if (touch1 && touch2) {
-      const dist = Math.hypot(
-        touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
-      );
+    const dist = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    );
 
-      if (!stage.lastDist) {
-        stage.lastDist = dist;
-      }
+    if (lastDistRef.current === null) { lastDistRef.current = dist; return; }
 
-      const delta = dist - stage.lastDist;
-      stage.lastDist = dist;
+    const delta = dist - lastDistRef.current;
+    lastDistRef.current = dist;
 
-      const oldScale = scale;
-      const newScale = oldScale * (1 + delta * 0.01);
-      const clampedScale = Math.max(0.5, Math.min(4, newScale));
+    const oldScale = gestureRef.current.scale;
+    const newScale = Math.max(0.5, Math.min(4, oldScale * (1 + delta * 0.01)));
+    const pos = gestureRef.current.position;
 
-      const midpoint = {
-        x: (touch1.clientX + touch2.clientX) / 2,
-        y: (touch1.clientY + touch2.clientY) / 2,
-      };
+    const midpoint = {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2,
+    };
+    const mousePointTo = {
+      x: (midpoint.x - pos.x) / oldScale,
+      y: (midpoint.y - pos.y) / oldScale,
+    };
+    const newPos = {
+      x: midpoint.x - mousePointTo.x * newScale,
+      y: midpoint.y - mousePointTo.y * newScale,
+    };
 
-      const mousePointTo = {
-        x: (midpoint.x - position.x) / oldScale,
-        y: (midpoint.y - position.y) / oldScale,
-      };
+    gestureRef.current = { scale: newScale, position: newPos };
 
-      setScale(clampedScale);
-      setPosition({
-        x: midpoint.x - mousePointTo.x * clampedScale,
-        y: midpoint.y - mousePointTo.y * clampedScale,
-      });
-    }
+    // RAF throttle: React state는 프레임당 1번만 업데이트
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      setScale(gestureRef.current.scale);
+      setPosition(gestureRef.current.position);
+      rafRef.current = null;
+    });
   };
 
   const handleTouchEnd = () => {
-    const stage = stageRef.current;
-    if (stage) stage.lastDist = null;
+    lastDistRef.current = null;
   };
 
   const nodes = [];
@@ -260,14 +274,13 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   return (
     <div style={{ 
       overflow: "hidden", 
-      maxHeight: "90vh", 
       width: "100%",
       touchAction: "none"
     }}>
       <Stage
         ref={stageRef}
         width={window.innerWidth}
-        height={window.innerHeight * 0.9}
+        height={stageHeight}
         scaleX={scale}
         scaleY={scale}
         x={position.x}
