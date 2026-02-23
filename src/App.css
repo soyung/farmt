@@ -242,7 +242,6 @@
 
   .app-content {
     padding: 32px 40px;
-    zoom: 1.5; /* Make everything 50% larger on desktop */
   }
 }
 
