@@ -93,53 +93,65 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
     });
   };
 
-  const handleTouchMove = (e) => {
-    e.evt.preventDefault();
-    const touch1 = e.evt.touches[0];
-    const touch2 = e.evt.touches[1];
-    if (!touch1 || !touch2) return;
+  // 핀치줌 전용 핸들러 (Konva 이벤트 아닌 DOM 이벤트로 처리)
+  useEffect(() => {
+    const container = stageRef.current?.container();
+    if (!container) return;
 
-    const dist = Math.hypot(
-      touch2.clientX - touch1.clientX,
-      touch2.clientY - touch1.clientY
-    );
+    const onTouchMove = (e) => {
+      if (e.touches.length < 2) return;
+      e.preventDefault();
 
-    if (lastDistRef.current === null) { lastDistRef.current = dist; return; }
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const dist = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
 
-    const delta = dist - lastDistRef.current;
-    lastDistRef.current = dist;
+      if (lastDistRef.current === null) { lastDistRef.current = dist; return; }
 
-    const oldScale = gestureRef.current.scale;
-    const newScale = Math.max(0.5, Math.min(4, oldScale * (1 + delta * 0.01)));
-    const pos = gestureRef.current.position;
+      const delta = dist - lastDistRef.current;
+      lastDistRef.current = dist;
 
-    const midpoint = {
-      x: (touch1.clientX + touch2.clientX) / 2,
-      y: (touch1.clientY + touch2.clientY) / 2,
+      const oldScale = gestureRef.current.scale;
+      const newScale = Math.max(0.5, Math.min(4, oldScale * (1 + delta * 0.01)));
+      const pos = gestureRef.current.position;
+
+      const midpoint = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      };
+      const mousePointTo = {
+        x: (midpoint.x - pos.x) / oldScale,
+        y: (midpoint.y - pos.y) / oldScale,
+      };
+      const newPos = {
+        x: midpoint.x - mousePointTo.x * newScale,
+        y: midpoint.y - mousePointTo.y * newScale,
+      };
+
+      gestureRef.current = { scale: newScale, position: newPos };
+
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        setScale(gestureRef.current.scale);
+        setPosition(gestureRef.current.position);
+        rafRef.current = null;
+      });
     };
-    const mousePointTo = {
-      x: (midpoint.x - pos.x) / oldScale,
-      y: (midpoint.y - pos.y) / oldScale,
+
+    const onTouchEnd = () => { lastDistRef.current = null; };
+
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd);
+    return () => {
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
     };
-    const newPos = {
-      x: midpoint.x - mousePointTo.x * newScale,
-      y: midpoint.y - mousePointTo.y * newScale,
-    };
+  }, [scale, position]);
 
-    gestureRef.current = { scale: newScale, position: newPos };
-
-    // RAF throttle: React state는 프레임당 1번만 업데이트
-    if (rafRef.current) return;
-    rafRef.current = requestAnimationFrame(() => {
-      setScale(gestureRef.current.scale);
-      setPosition(gestureRef.current.position);
-      rafRef.current = null;
-    });
-  };
-
-  const handleTouchEnd = () => {
-    lastDistRef.current = null;
-  };
+  const handleTouchEnd = () => {};  // DOM 핸들러로 대체됨
 
   const nodes = [];
 
@@ -265,10 +277,26 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
   const stageW = cols * (cellW + gapX);
   const stageH = rows * (cellH + gapY);
 
+  // 브라우저 터치 이벤트 DOM 레벨에서 직접 차단
   useEffect(() => {
-    if (stageRef.current) {
-      stageRef.current.container().style.touchAction = 'none';
-    }
+    const container = stageRef.current?.container();
+    if (!container) return;
+
+    container.style.touchAction = 'none';
+    container.style.userSelect = 'none';
+
+    const preventDefault = (e) => {
+      if (e.touches.length >= 2) e.preventDefault(); // 핀치줌 차단
+    };
+
+    // passive: false 필수 — 이게 없으면 preventDefault 무시됨
+    container.addEventListener('touchstart', preventDefault, { passive: false });
+    container.addEventListener('touchmove', preventDefault, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchstart', preventDefault);
+      container.removeEventListener('touchmove', preventDefault);
+    };
   }, []);
 
   return (
@@ -287,8 +315,10 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
         y={position.y}
         draggable
         onWheel={handleWheel}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onDragEnd={(e) => {
+          setPosition({ x: e.target.x(), y: e.target.y() });
+          gestureRef.current.position = { x: e.target.x(), y: e.target.y() };
+        }}
         pixelRatio={window.devicePixelRatio} 
       >
         <Layer>{nodes}</Layer>
