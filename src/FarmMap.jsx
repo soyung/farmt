@@ -1,5 +1,5 @@
 // src/FarmMap.jsx
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Stage,
   Layer,
@@ -10,26 +10,18 @@ import {
 } from "react-konva";
 
 import useIcons from "./hooks/useIcons";
-import { useSignalLights } from "./SignalLightsContext"; // ← make sure this file exists!
+import { useSignalLights } from "./SignalLightsContext";
 import RenamePopup from "./RenamePopup";
-import { useState } from "react";
 import { useLabels } from "./LabelContext";
 
-/* ------------------------------------------------------------------ */
-/* Utility helpers                                                    */
-/* ------------------------------------------------------------------ */
-
-// How many days have passed since a YYYY-MM-DD string?
 const daysSince = (isoDate) =>
   (Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24);
 
-// Decide which icons should light up for *one* tree’s history
 function computeTriggers(records) {
   if (!records || records.length === 0) {
     return { stale: true, treeOn: false, bugOn: false, clockOn: true };
   }
 
-  // 1️⃣  Staleness = days since newest row
   const newestDate = records[0].date;
   const stale = daysSince(newestDate) >= 3;
 
@@ -43,188 +35,264 @@ function computeTriggers(records) {
     }
     if (!bugOn && Number(row.bugs) >= 4) bugOn = true;
 
-    if (treeOn && bugOn) break; // no need to scan further
+    if (treeOn && bugOn) break;
   }
 
   return { stale, treeOn, bugOn, clockOn: stale };
 }
 
-/* ------------------------------------------------------------------ */
-/* Main component                                                     */
-/* ------------------------------------------------------------------ */
-
 export default function FarmMap({ treeData = {}, onTreeClick }) {
-  /* ─── layout constants ─────────────────────────────────────────── */
   const rows     = 25;
   const cols     = 8;
-  const cellW    = 44;   // ⬅️ width of one tree zone  (fits 3 icons + margin)
-  const cellH    = 26;   // ⬅️ height (icon 12px + 3px gap + 8px text)
-  const gapX     = 6;    // horizontal gap
-  const gapY     = 8;    // vertical gap
-  const iconSize = 12;   // width & height of each PNG inside the square
+  const cellW    = 44;
+  const cellH    = 26;
+  const gapX     = 6;
+  const gapY     = 8;
+  const iconSize = 12;
+  const iconGap  = 2;
 
-  /* ─── shared assets & state ────────────────────────────────────── */
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const stageRef = useRef(null);
+
   const { tree: treeImg, bug: bugImg, clock: clockImg } = useIcons();
-  const { signalOn } = useSignalLights();   // true = colored, false = gray
+  const { signalOn } = useSignalLights();
   const { labels, upsert } = useLabels();
-  const [editId, setEditId] = useState(null); 
+  const [editId, setEditId] = useState(null);
 
-  /* ─── build all Konva nodes ───────────────────────────────────── */
+  const handleWheel = (e) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    const oldScale = scale;
+    const pointer = stage.getPointerPosition();
+
+    const mousePointTo = {
+      x: (pointer.x - position.x) / oldScale,
+      y: (pointer.y - position.y) / oldScale,
+    };
+
+    const newScale = e.evt.deltaY > 0 ? oldScale * 0.9 : oldScale * 1.1;
+    const clampedScale = Math.max(0.5, Math.min(4, newScale));
+
+    setScale(clampedScale);
+    setPosition({
+      x: pointer.x - mousePointTo.x * clampedScale,
+      y: pointer.y - mousePointTo.y * clampedScale,
+    });
+  };
+
+  const handleTouchMove = (e) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    const touch1 = e.evt.touches[0];
+    const touch2 = e.evt.touches[1];
+
+    if (touch1 && touch2) {
+      const dist = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+
+      if (!stage.lastDist) {
+        stage.lastDist = dist;
+      }
+
+      const delta = dist - stage.lastDist;
+      stage.lastDist = dist;
+
+      const oldScale = scale;
+      const newScale = oldScale * (1 + delta * 0.01);
+      const clampedScale = Math.max(0.5, Math.min(4, newScale));
+
+      const midpoint = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      };
+
+      const mousePointTo = {
+        x: (midpoint.x - position.x) / oldScale,
+        y: (midpoint.y - position.y) / oldScale,
+      };
+
+      setScale(clampedScale);
+      setPosition({
+        x: midpoint.x - mousePointTo.x * clampedScale,
+        y: midpoint.y - mousePointTo.y * clampedScale,
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    const stage = stageRef.current;
+    if (stage) stage.lastDist = null;
+  };
+
   const nodes = [];
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const id = `Tree-${c + 1}-${r + 1}`;
-      const numericId = `${c + 1}-${r + 1}`;      // "1-1"
-      const lbl       = labels[id] || {};         // {name,color} or {}
+      const numericId = `${c + 1}-${r + 1}`;
+      const lbl = labels[id] || {};
       const displayId = lbl.name ? `${numericId} ${lbl.name}` : numericId;
+      const isDisabled = lbl.disabled === true;
 
-      const records = treeData[id] || [];
-
+      // ✅ 수정: numericId("1-1")로 조회 (DB 키와 일치)
+      const records = treeData[numericId] || [];
       const { treeOn, bugOn, clockOn } = computeTriggers(records);
 
       const x = c * (cellW + gapX);
       const y = r * (cellH + gapY);
 
-      /* ----- icon strip (single click target) -------------------- */
+      if (isDisabled) {
+        nodes.push(
+          <Group key={id} x={x} y={y}>
+            <Rect
+              width={cellW}
+              height={cellH}
+              fill="#d3d3d3"
+              opacity={0.5}
+            />
+          </Group>
+        );
+      } else {
+        nodes.push(
+          <Group
+            key={id}
+            x={x}
+            y={y}
+            onClick={() => onTreeClick(id)}
+            onTap={() => onTreeClick(id)}
+          >
+            <Rect
+              width={cellW}
+              height={cellH}
+              fill="transparent"
+              listening={false}
+            />
+
+            <KImage
+              image={treeImg}
+              x={xCenter(cellW, iconSize, 0, iconGap)}
+              y={(cellH - iconSize) / 2}
+              width={iconSize}
+              height={iconSize}
+              opacity={signalOn && treeOn ? 1 : 0.25}
+            />
+            <KImage
+              image={bugImg}
+              x={xCenter(cellW, iconSize, 1, iconGap)}
+              y={(cellH - iconSize) / 2}
+              width={iconSize}
+              height={iconSize}
+              opacity={signalOn && bugOn ? 1 : 0.25}
+            />
+            <KImage
+              image={clockImg}
+              x={xCenter(cellW, iconSize, 2, iconGap)}
+              y={(cellH - iconSize) / 2}
+              width={iconSize}
+              height={iconSize}
+              opacity={signalOn && clockOn ? 1 : 0.25}
+            />
+          </Group>
+        );
+      }
+
+      if (!FarmMap._textSizer) {
+        const offscreenCanvas = document.createElement('canvas');
+        FarmMap._textSizer = offscreenCanvas.getContext('2d');
+      }
+      const ctx = FarmMap._textSizer;
+
+      const baseFont = 'sans-serif';
+      let fontSize = 8;
+      const minFontSize = 4;
+      const cellPadding = 2;
+
+      ctx.font = `${fontSize}px ${baseFont}`;
+      let textWidth = ctx.measureText(displayId).width;
+      while (textWidth + cellPadding * 2 > cellW && fontSize > minFontSize) {
+        fontSize--;
+        ctx.font = `${fontSize}px ${baseFont}`;
+        textWidth = ctx.measureText(displayId).width;
+      }
+
       nodes.push(
         <Group
-          key={id}
+          key={`${id}-label`}
           x={x}
-          y={y}
-          onClick={() => onTreeClick(id)}
-          onTap={() => onTreeClick(id)}
+          y={y + iconSize + 8}
+          onClick={() => setEditId(id)}
+          onTap={() => setEditId(id)}
         >
-
-          {/* invisible hit-box so the whole icon strip is easy to tap */}
           <Rect
             width={cellW}
-            height={cellH}
-            fill="transparent"   // 0.1 % opaque – visible? no. clickable? yes.
+            height={10}
+            fill={isDisabled ? '#999999' : (lbl.color || '#ffffff')}
             listening={false}
-        />
-
-          {/* three icons, horizontally centered */}
-          <KImage
-            image={treeImg}
-            x={xCenter(cellW, iconSize, 0)}
-            y={(cellH - iconSize) / 2}
-            width={iconSize}
-            height={iconSize}
-            opacity={signalOn && treeOn ? 1 : 0.25}
           />
-          <KImage
-            image={bugImg}
-            x={xCenter(cellW, iconSize, 1)}
-            y={(cellH - iconSize) / 2}
-            width={iconSize}
-            height={iconSize}
-            opacity={signalOn && bugOn ? 1 : 0.25}
-          />
-          <KImage
-            image={clockImg}
-            x={xCenter(cellW, iconSize, 2)}
-            y={(cellH - iconSize) / 2}
-            width={iconSize}
-            height={iconSize}
-            opacity={signalOn && clockOn ? 1 : 0.25}
+          <Text
+            width={cellW}
+            height={10}
+            text={displayId}
+            fontSize={fontSize}
+            fontFamily={baseFont}
+            align="center"
+            verticalAlign="middle"
+            ellipsis={true}
+            fill={isDisabled ? '#666666' : '#000000'}
           />
         </Group>
       );
-
-      /* ----- tiny label under each square ------------- */
-
-
-// 1. Create a temporary canvas context (only needs to happen once per render).
-//    We can reuse the same context for all labels in this pass.
-if (!FarmMap._textSizer) {
-  const offscreenCanvas = document.createElement('canvas');
-  FarmMap._textSizer = offscreenCanvas.getContext('2d');
-}
-const ctx = FarmMap._textSizer;
-
-// 2. Choose a base font family & starting fontSize (in px):
-const baseFont     = 'sans-serif';
-let   fontSize     = 8;   // start here
-const minFontSize  = 4;   // do not go smaller than this
-const cellPadding  = 2;   // extra space so text doesn’t butt right up against Rect edge
-
-// 3. Measure and shrink loop:
-ctx.font = `${fontSize}px ${baseFont}`;
-let textWidth = ctx.measureText(displayId).width;
-while (textWidth + cellPadding * 2 > cellW && fontSize > minFontSize) {
-  fontSize--;
-  ctx.font = `${fontSize}px ${baseFont}`;
-  textWidth = ctx.measureText(displayId).width;
-}
-
-// ── Now render the label with the computed fontSize ──
-nodes.push(
-  <Group
-    key={`${id}-label`}
-    x={x}
-    y={y + iconSize + 8}
-    onClick={() => setEditId(id)}
-    onTap={() => setEditId(id)}
-  >
-    <Rect
-      width={cellW}
-      height={10}
-      fill={lbl.color || '#ffffff'}
-      listening={false}
-    />
-    <Text
-      width={cellW}
-      height={10}
-      text={displayId}
-      fontSize={fontSize}
-      fontFamily={baseFont}
-      align="center"
-      verticalAlign="middle"
-      ellipsis={true}
-    />
-  </Group>
-);
-
     }
   }
 
-  /* ─── Stage size ──────────────────────────────────────────────── */
   const stageW = cols * (cellW + gapX);
-  const stageH = rows * (cellH + gapY);  // +label height
+  const stageH = rows * (cellH + gapY);
 
-  const stageRef = React.useRef(null);
-
-  React.useEffect(() => {
-  if (stageRef.current) {
-    stageRef.current.container().style.touchAction = 'pinch-zoom'; // ← key line
-  }
-    }, []);
-
+  useEffect(() => {
+    if (stageRef.current) {
+      stageRef.current.container().style.touchAction = 'none';
+    }
+  }, []);
 
   return (
-    <div style={{ overflow: "auto", maxHeight: "90vh" }}>
-      <Stage width={stageW} height={stageH} preventDefault={false} >
+    <div style={{ 
+      overflow: "hidden", 
+      maxHeight: "90vh", 
+      width: "100%",
+      touchAction: "none"
+    }}>
+      <Stage
+        ref={stageRef}
+        width={window.innerWidth}
+        height={window.innerHeight * 0.9}
+        scaleX={scale}
+        scaleY={scale}
+        x={position.x}
+        y={position.y}
+        draggable
+        onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        pixelRatio={window.devicePixelRatio} 
+      >
         <Layer>{nodes}</Layer>
       </Stage>
-        {editId && (
-           <RenamePopup
-            id={editId}
-            current={labels[editId]}
-            onSave={(payload) => upsert(editId, payload)}
-            onClose={() => setEditId(null)}
-          />
-        )}
+      {editId && (
+        <RenamePopup
+          id={editId}
+          current={labels[editId]}
+          onSave={(payload) => upsert(editId, payload)}
+          onClose={() => setEditId(null)}
+        />
+      )}
     </div>
   );
 }
 
-const iconGap = 2;
-/* ------------------------------------------------------------------ */
-/* Helper: center each icon with a small offset                       */
-/* i = 0,1,2 → first/second/third icon                                */
-/* ------------------------------------------------------------------ */
-function xCenter(cellWidth, icon, i) {
-  const stripW = 3 * icon + 2 * iconGap;
-  return (cellWidth - stripW) / 2 + i * (icon + iconGap);
+function xCenter(cellWidth, icon, i, gap) {
+  const stripW = 3 * icon + 2 * gap;
+  return (cellWidth - stripW) / 2 + i * (icon + gap);
 }

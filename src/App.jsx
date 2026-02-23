@@ -18,16 +18,14 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [headerOpen, setHeaderOpen] = useState(false); // ← 기본 접힘
 
-  // Check Supabase auth session on mount
   useEffect(() => {
-    // Get current session (persists for 30 days automatically)
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth changes (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -35,7 +33,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load tree data (only when authenticated)
   useEffect(() => {
     if (!user) return;
 
@@ -45,24 +42,17 @@ export default function App() {
         .select('*')
         .order('date', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching trees:', error);
-        return;
-      }
+      if (error) { console.error('Error fetching trees:', error); return; }
 
       const grouped = {};
-      data.forEach((row) => {
-        (grouped[row.id] ??= []).push(row);
-      });
+      data.forEach((row) => { (grouped[row.id] ??= []).push(row); });
       setTreeData(grouped);
     }
 
     function subscribeRows() {
       return supabase
         .channel('farm-tracker-channel')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'trees' },
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'trees' },
           ({ eventType, new: row, old }) => {
             setTreeData((prev) => {
               const copy = { ...prev };
@@ -86,10 +76,6 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [user]);
 
-  const handleLogin = (user) => {
-    setUser(user);
-  };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -106,48 +92,64 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={setUser} />;
   }
 
   return (
     <div className="app-wrapper">
       <div className="app-container">
-        <header className="app-header">
-          <div className="header-content">
+
+        {/* ── 상단 바 + 접히는 메뉴 (sticky 안에 같이) ── */}
+        <header className="app-header-bar">
+          <div className="header-bar-inner">
             <div className="header-title">
               <h1>Podowa App</h1>
               <span className="version">v0.1.0</span>
             </div>
-            <div className="header-actions">
-              <div className="icon-links">
+            <button
+              className="header-toggle-btn"
+              onClick={() => setHeaderOpen((v) => !v)}
+              aria-label="메뉴 열기/닫기"
+            >
+              {headerOpen ? '✕' : '☰'}
+            </button>
+          </div>
+
+          {/* ── 접히는 메뉴 ── */}
+          {headerOpen && (
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderTop: '1px solid #e0e0e0',
+              backgroundColor: '#fafafa',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.6rem',
+            }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <IconLink href="https://example.com/water" src={waterlink} alt="global water" />
                 <IconLink href="https://example.com/trt" src={trtlink} alt="global treatment" />
               </div>
               <ExportButton />
-              <span className="welcome-text">{user.email}</span>
-              <button onClick={() => setShowChangePassword(true)} className="change-password-button">
-                Change Password
+              <span style={{ fontSize: '0.85rem', color: '#666' }}>{user.email}</span>
+              <button
+                onClick={() => { setShowChangePassword(true); setHeaderOpen(false); }}
+                className="change-password-button"
+              >
+                계정 설정
               </button>
               <button onClick={handleLogout} className="logout-button">
                 Logout
               </button>
             </div>
-          </div>
+          )}
         </header>
 
         <main className="app-content">
-          <FarmMap
-            treeData={treeData}
-            onTreeClick={setSelectedTree}
-          />
+          <FarmMap treeData={treeData} onTreeClick={setSelectedTree} />
         </main>
 
         {selectedTree && (
-          <TreeModal
-            treeId={selectedTree}
-            initialData={null}
-            onClose={() => setSelectedTree(null)}
-          />
+          <TreeModal treeId={selectedTree} initialData={null} user={user} onClose={() => setSelectedTree(null)} />
         )}
 
         {showChangePassword && (

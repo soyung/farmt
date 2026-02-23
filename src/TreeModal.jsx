@@ -6,25 +6,20 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 
 // ---------- HELPER FUNCTIONS ---------- //
-// Helper to parse the actual tree ID from display ID
 function parseTreeId(treeId) {
-// If starts with "Tree-", remove it
   if (treeId.startsWith('Tree-')) {
-    return treeId.replace('Tree-', '');  // "Tree-1-1" → "1-1"
+    return treeId.replace('Tree-', '');
   }
-  
-  // If it's "1-1 Label", extract just "1-1"
   const numericPart = treeId.split(' ')[0];
-  return numericPart;  // "1-1 소평옥" → "1-1"
+  return numericPart;
 }
-// Converts "YYYY-MM-DD" to "MM/DD/YYYY"
+
 function formatDateForDisplay(isoDate) {
   if (!isoDate) return "";
   const parts = isoDate.split('-');
-  return `${parts[1]}/${parts[2]}/${parts[0]}`; // MM/DD/YYYY
+  return `${parts[1]}/${parts[2]}/${parts[0]}`;
 }
 
-// Converts "MM/DD/YYYY" to "YYYY-MM-DD" (for saving to Supabase)
 function parseDateForSupabase(mmddyyyy) {
   if (!mmddyyyy) return null;
   const parts = mmddyyyy.split('/');
@@ -32,20 +27,15 @@ function parseDateForSupabase(mmddyyyy) {
   return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
 }
 
-// Returns today's date in MM/DD/YYYY format.
 function getTodayMMDDYYYY() {
   return formatDateForDisplay(new Date().toISOString().slice(0, 10));
 }
 
 // ---------- CONFIGURATION OPTIONS ---------- //
-
-// For Power, Balance, and Bugs button groups.
 const POWER_OPTIONS = ['판단불가/지켜봐야함', '1', '2', '3', '4', '5'];
 const BALANCE_OPTIONS = ['판단불가/지켜봐야함', '1', '2', '3', '4', '5'];
 const BUG_OPTIONS = [0, 1, 2, 3, 4, 5];
 
-// For season-specific items:
-// Seasons 1..6: Number of checkboxes for each season.
 const SEASON_CHECKBOX_COUNTS = { 1: 5, 2: 4, 3: 6, 4: 6, 5: 3, 6: 3 };
 
 const SEASON_OPTION_LABELS = {
@@ -57,21 +47,14 @@ const SEASON_OPTION_LABELS = {
   6: ['세력조절 (강한가지)', '세력조절 (약한가지/송이떨구기)', '알솎이'],
 };
 
-// Season 7: 5 qualities with a 5-scale Likert rating.
 const SEASON7_QUALITIES = ['착색', '당도', '등숙', '잎상태', '열매품질'];
 const SEASON7_SCORES = [1, 2, 3, 4, 5];
 
-// Valid season values (1 through 7)
 const SEASONS = [1, 2, 3, 4, 5, 6, 7];
 
 const SEASON_INSTRUCTIONS = {
-  1: `조금이라도 적용되었거나, 시도했던 기술에는 체크해주세요.
-영농일지 리포트로 기록에 남습니다.`,
-  2: `평균수준의 세력을 관찰하고, 가장 약한 가지들이 세력을 따라갈 수 있게
-포도송이의 짐을 덜어줍니다. (매일 매일 조금씩 관찰)
-강하게 먼저 4‑5엽기가 오거나 도장하는 가지들은 적심, 또는 제거합니다.
-균형있게 자랄 수 있게 하는 것이 4‑5엽기의 핵심입니다.
-균형있게 자라야 꽃이 안정적으로 피고, 수정이 잘 이루어집니다.`,
+  1: `조금이라도 적용되었거나, 시도했던 기술에는 체크해주세요.\n영농일지 리포트로 기록에 남습니다.`,
+  2: `평균수준의 세력을 관찰하고, 가장 약한 가지들이 세력을 따라갈 수 있게\n포도송이의 짐을 덜어줍니다. (매일 매일 조금씩 관찰)\n강하게 먼저 4‑5엽기가 오거나 도장하는 가지들은 적심, 또는 제거합니다.\n균형있게 자랄 수 있게 하는 것이 4‑5엽기의 핵심입니다.\n균형있게 자라야 꽃이 안정적으로 피고, 수정이 잘 이루어집니다.`,
   3: `개화기 (14일)`,
   4: `착과기,비대기 (14일)`,
   5: `경핵기 (25일) 끝순이 죽지 않아야한다. 세력통제를 확실하게해야한다.`,
@@ -88,13 +71,11 @@ const SEASON_NAMES = {
   7: '수확기',
 };
 
-
-
 // ---------- MAIN COMPONENT ---------- //
-const TreeModal = ({ treeId, initialData, onClose }) => {
+const TreeModal = ({ treeId, initialData, onClose, user }) => {
   const todayMMDDYYYY = getTodayMMDDYYYY();
-
   const actualTreeId = parseTreeId(treeId);
+
   const [treeData, setTreeData] = useState(() => ({
     date: todayMMDDYYYY,
     season: '',
@@ -111,53 +92,100 @@ const TreeModal = ({ treeId, initialData, onClose }) => {
   const [showTable, setShowTable] = useState(false);
   const toggleShowTable = () => setShowTable(!showTable);
 
-useEffect(() => {
-  async function fetchHistory() {
-    console.log('🔍 Fetching history for:', actualTreeId);  
-    
+  // ✅ 핵심 수정: 선택된 날짜의 기존 데이터 불러오기
+  async function loadDataForDate(dateMMDDYYYY) {
+    const isoDate = parseDateForSupabase(dateMMDDYYYY);
+    if (!isoDate) return;
+
     const { data, error } = await supabase
       .from('trees')
       .select('*')
-      .eq('id', actualTreeId)  
-      .order('date');
-      
-    console.log('📊 Query result:', { data, error });  
-    
-    if (!error && data) {
-      const formattedData = data.map(d => ({
-        date: d.date,
-        season: d.season,
-        power: d.power,
-        balance: d.balance,
-        bugs: d.bugs,
-        comments: d.comments || '',
-        producer: d.producer || '',
-        images: d.images || [],
-        powerJ: (parseInt(d.power) || 0),
-        balanceJ: (parseInt(d.balance) || 0),
-        bugsJ: (parseInt(d.bugs) || 0),
-      }));
-      
-      console.log('✅ Formatted data:', formattedData);
-      setHistory(formattedData);
+      .eq('id', actualTreeId)
+      .eq('date', isoDate)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error loading date data:', error);
+      return;
+    }
+
+    if (data) {
+      // 해당 날짜 데이터가 있으면 폼에 채움
+      setTreeData({
+        date: dateMMDDYYYY,
+        season: data.season ? String(data.season) : '',
+        power: data.power || '',
+        balance: data.balance || '',
+        bugs: data.bugs !== null && data.bugs !== undefined ? String(data.bugs) : '',
+        images: data.images || [],
+        comments: data.comments || '',
+        season_data: data.season_data || {},
+      });
+    } else {
+      // 해당 날짜 데이터 없으면 날짜만 유지하고 나머지 초기화
+      setTreeData({
+        date: dateMMDDYYYY,
+        season: '',
+        power: '',
+        balance: '',
+        bugs: '',
+        images: [],
+        comments: '',
+        season_data: {},
+      });
     }
   }
-  fetchHistory();
-}, [actualTreeId]); 
- 
- 
+
+  // 모달 열릴 때 오늘 날짜 데이터 자동 로드
+  useEffect(() => {
+    loadDataForDate(todayMMDDYYYY);
+  }, [actualTreeId]);
+
+  // 히스토리 불러오기
+  useEffect(() => {
+    async function fetchHistory() {
+      const { data, error } = await supabase
+        .from('trees')
+        .select('*')
+        .eq('id', actualTreeId)
+        .order('date');
+
+      if (!error && data) {
+        const formattedData = data.map(d => ({
+          date: d.date,
+          season: d.season,
+          power: d.power,
+          balance: d.balance,
+          bugs: d.bugs,
+          comments: d.comments || '',
+          producer: d.producer || '',
+          images: d.images || [],
+          powerJ: (parseInt(d.power) || 0),
+          balanceJ: (parseInt(d.balance) || 0),
+          bugsJ: (parseInt(d.bugs) || 0),
+        }));
+        setHistory(formattedData);
+      }
+    }
+    fetchHistory();
+  }, [actualTreeId]);
+
   const cellStyle = {
     border: '1px solid #ccc',
     padding: '6px 8px',
     textAlign: 'center',
   };
 
-  // Generic change handler for text inputs.
   function handleChange(field, value) {
     setTreeData((prev) => ({ ...prev, [field]: value }));
   }
 
-  // For button groups, we'll use a simple style.
+  // 날짜 변경 시 해당 날짜 데이터 로드
+  function handleDateChange(isoDateValue) {
+    const mmddyyyy = formatDateForDisplay(isoDateValue);
+    loadDataForDate(mmddyyyy);
+  }
+
   const buttonStyle = (active) => ({
     padding: '1rem 1.5rem',
     margin: '0.3rem',
@@ -168,9 +196,6 @@ useEffect(() => {
     cursor: 'pointer',
   });
 
-  // ---------- HANDLERS FOR SEASON-SPECIFIC ITEMS ---------- //
-
-  // For seasons 1–6: Handle checkbox toggles.
   function handleCheckboxChange(season, optionKey, checked) {
     setTreeData((prev) => ({
       ...prev,
@@ -181,7 +206,6 @@ useEffect(() => {
     }));
   }
 
-  // For season 7: Handle Likert radio buttons.
   function handleLikertChange(seasonKey, quality, score) {
     setTreeData((prev) => ({
       ...prev,
@@ -226,34 +250,33 @@ useEffect(() => {
     }));
   }
 
-// ---------- SAVE FUNCTION ----------
-async function saveChanges() {
-  const isoDate = parseDateForSupabase(treeData.date);
+  // ---------- SAVE FUNCTION ----------
+  async function saveChanges() {
+    const isoDate = parseDateForSupabase(treeData.date);
 
-  const row = {
-    id: actualTreeId,            
-    date: isoDate,         // date column must be part of the row
-    season: treeData.season ? Number(treeData.season) : null,
-    power:   treeData.power,
-    balance: treeData.balance,
-    bugs:    treeData.bugs === '' ? null : Number(treeData.bugs),
-    images:  treeData.images,
-    comments: treeData.comments,
-    season_data: treeData.season_data,
-  };
+    const row = {
+      id: actualTreeId,
+      date: isoDate,
+      season: treeData.season ? Number(treeData.season) : null,
+      power: treeData.power,
+      balance: treeData.balance,
+      bugs: treeData.bugs === '' ? null : Number(treeData.bugs),
+      images: treeData.images,
+      comments: treeData.comments,
+      season_data: treeData.season_data,
+      producer: user?.user_metadata?.nickname || user?.email || '',
+    };
 
-  // id + date is the composite key
-  const { error } = await supabase
-    .from('trees')
-    .upsert(row, { onConflict: ['id', 'date'] });   // <── important
+    const { error } = await supabase
+      .from('trees')
+      .upsert(row, { onConflict: ['id', 'date'] });
 
-  if (error) console.error(error);
-  onClose();
-}
+    if (error) console.error(error);
+    onClose();
+  }
 
- const jitter = (val, offset = 0.6) => val + (Math.random() - 0.5) * offset;
-  // ---------- RENDERING ---------- //
   const currentSeason = Number(treeData.season);
+
   return (
     <div
       style={{
@@ -267,161 +290,85 @@ async function saveChanges() {
           maxWidth: '700px', width: '90%', maxHeight: '90vh', overflowY: 'auto', zIndex: 1000,
         }}
       >
-{/* ── Frosted sticky header (no border, inline label) ── */}
-<div
-  style={{
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-    padding: '1rem 1rem',
-    backdropFilter: 'blur(6px)',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    /* removed borderBottom / outlines */
-    display: 'flex',
-    alignItems: 'center',
-  }}
->
-  {(() => {
-    const parts  = treeId.split(' ');
-    const num    = parts[0];               // "1-1"
-    const label  = parts.slice(1).join(' '); // optional
-    return (
-      <>
-        <span style={{ fontSize: '1.4rem', fontWeight: 600 }}>
-          {num}
-        </span>
-        {label && (
-          <span
-            style={{
-              marginLeft: 8,          // small gap
-              fontSize: '1.1rem',
-              color: '#555',
-              fontWeight: 500,
-            }}
-          >
-            {label}
-          </span>
-        )}
-      </>
-    );
-  })()}
-</div>
-
-
-{/* ---------- HISTORICAL DATA CHART ---------- */}
-{history.length > 0 && (
-  <div style={{ height: 220, marginBottom: 16 }}>
-    <ResponsiveContainer width="100%" height="100%">
-      {/* jitter once so points don’t overlap */}
-<LineChart
-  data={history.map(h => ({
-    ...h,
-    powerJ: (h.powerJ || 0) + (Math.random() - 0.5) * 0.5,
-    balanceJ: (h.balanceJ || 0) + (Math.random() - 0.5) * 0.5,
-    bugsJ: (h.bugsJ || 0) + (Math.random() - 0.5) * 0.5,
-  }))}
-  margin={{ top: 10, right: 20 }}
->
-        {/* uniform thin grid */}
-        <CartesianGrid vertical={false} horizontal={false} />
-
-        {/* dashed horizontal lines exactly at y = 1-5 */}
-        {[1, 2, 3, 4, 5].map((y) => (
-          <ReferenceLine
-            key={y}
-            y={y}
-            stroke="#ccc"
-            strokeDasharray="3 3"
-            ifOverflow="extendDomain"
-          />
-        ))}
-
-
-        {/* solid axis lines */}
-        <XAxis
-            dataKey="date"
-            tickFormatter={(d) => {
-             const [year, month, day] = d.split('-');
-          return `${month}/${day}`;
-               }}
-          axisLine
-            />
-        <YAxis
-          domain={[0, 5]}
-          ticks={[0, 1, 2, 3, 4, 5]}
-          tickFormatter={(v) => (v === 0 ? '0/NA' : v)}
-          axisLine
-        />
-
-        {/* tooltip: no grey cursor line, values rounded */}
-        <Tooltip
-          cursor={false}
-          formatter={(val) => Math.round(val)}
-        />
-
-     {/*  custom legend with line + dot  */}
-     <Legend
-          wrapperStyle={{ display: 'flex', justifyContent: 'center' }}
-          content={({ payload }) => (
-            <div style={{ display: 'flex', gap: 18 }}>
-              {payload.map(({ color, value }) => {
-                const label = { powerJ: '세력', balanceJ: '균형', bugsJ: '해충' }[value] || value;
-                return (
-                  <span key={value} style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
-                    <svg width="30" height="10" style={{ marginRight: 4 }}>
-                      <line x1="0"  y1="5" x2="26" y2="5" stroke={color} strokeWidth="2" />
-                      <circle cx="13" cy="5" r="3.5" fill={color} />
-                    </svg>
+        {/* Sticky header */}
+        <div
+          style={{
+            position: 'sticky', top: 0, zIndex: 10, padding: '1rem 1rem',
+            backdropFilter: 'blur(6px)', backgroundColor: 'rgba(255,255,255,0.8)',
+            display: 'flex', alignItems: 'center',
+          }}
+        >
+          {(() => {
+            const parts = treeId.split(' ');
+            const num = parts[0];
+            const label = parts.slice(1).join(' ');
+            return (
+              <>
+                <span style={{ fontSize: '1.4rem', fontWeight: 600 }}>{num}</span>
+                {label && (
+                  <span style={{ marginLeft: 8, fontSize: '1.1rem', color: '#555', fontWeight: 500 }}>
                     {label}
                   </span>
-                );
-              })}
-            </div>
-          )}
-        />
-        {/* series – solid dots */}
-        <Line
-          type="basis"
-          dataKey="powerJ"
-          stroke="green"
-          strokeWidth={2}
-          dot={{ r: 4, fill: 'green' }}
-          name="세력"
-          isAnimationActive={false}
-        />
-        <Line
-          type="basis"
-          dataKey="balanceJ"
-          stroke="blue"
-          strokeWidth={2}
-          dot={{ r: 4, fill: 'blue' }}
-          name="균형"
-          isAnimationActive={false}
-        />
-        <Line
-          type="basis"
-          dataKey="bugsJ"
-          stroke="red"
-          strokeWidth={2}
-          dot={{ r: 4, fill: 'red' }}
-          name="해충"
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  </div>
-)}
+                )}
+              </>
+            );
+          })()}
+        </div>
 
+        {/* Chart */}
+        {history.length > 0 && (
+          <div style={{ height: 220, marginBottom: 16 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={history.map(h => ({
+                  ...h,
+                  powerJ: (h.powerJ || 0) + (Math.random() - 0.5) * 0.5,
+                  balanceJ: (h.balanceJ || 0) + (Math.random() - 0.5) * 0.5,
+                  bugsJ: (h.bugsJ || 0) + (Math.random() - 0.5) * 0.5,
+                }))}
+                margin={{ top: 10, right: 20 }}
+              >
+                <CartesianGrid vertical={false} horizontal={false} />
+                {[1, 2, 3, 4, 5].map((y) => (
+                  <ReferenceLine key={y} y={y} stroke="#ccc" strokeDasharray="3 3" ifOverflow="extendDomain" />
+                ))}
+                <XAxis dataKey="date" tickFormatter={(d) => { const [, month, day] = d.split('-'); return `${month}/${day}`; }} axisLine />
+                <YAxis domain={[0, 5]} ticks={[0, 1, 2, 3, 4, 5]} tickFormatter={(v) => (v === 0 ? '0/NA' : v)} axisLine />
+                <Tooltip cursor={false} formatter={(val) => Math.round(val)} />
+                <Legend
+                  wrapperStyle={{ display: 'flex', justifyContent: 'center' }}
+                  content={({ payload }) => (
+                    <div style={{ display: 'flex', gap: 18 }}>
+                      {payload.map(({ color, value }) => {
+                        const label = { powerJ: '세력', balanceJ: '균형', bugsJ: '해충' }[value] || value;
+                        return (
+                          <span key={value} style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
+                            <svg width="30" height="10" style={{ marginRight: 4 }}>
+                              <line x1="0" y1="5" x2="26" y2="5" stroke={color} strokeWidth="2" />
+                              <circle cx="13" cy="5" r="3.5" fill={color} />
+                            </svg>
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                />
+                <Line type="basis" dataKey="powerJ" stroke="green" strokeWidth={2} dot={{ r: 4, fill: 'green' }} name="세력" isAnimationActive={false} />
+                <Line type="basis" dataKey="balanceJ" stroke="blue" strokeWidth={2} dot={{ r: 4, fill: 'blue' }} name="균형" isAnimationActive={false} />
+                <Line type="basis" dataKey="bugsJ" stroke="red" strokeWidth={2} dot={{ r: 4, fill: 'red' }} name="해충" isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
-
-      
         {/* 1. Date */}
         <div style={{ marginBottom: '0.5rem' }}>
           <label>날짜:</label>
           <input
             type="date"
             value={parseDateForSupabase(treeData.date)}
-            onChange={(e) => handleChange('date', formatDateForDisplay(e.target.value))}
+            onChange={(e) => handleDateChange(e.target.value)}  // ✅ 날짜 변경 시 데이터 로드
             style={{ marginLeft: '0.5rem', padding: '0.5rem', fontSize: '1rem' }}
           />
         </div>
@@ -431,55 +378,37 @@ async function saveChanges() {
           <label>생육시기:</label>
           <div style={{ marginLeft: '0.5rem', display: 'flex', flexWrap: 'wrap' }}>
             {SEASONS.map((s) => (
-              <button
-                key={s}
-                onClick={() => handleChange('season', String(s))}
-                style={buttonStyle(treeData.season === String(s))}
-              >
+              <button key={s} onClick={() => handleChange('season', String(s))} style={buttonStyle(treeData.season === String(s))}>
                 {SEASON_NAMES[s] || `Season ${s}`}
               </button>
             ))}
           </div>
         </div>
 
-{/* 3. Season-specific items */}
-{treeData.season && currentSeason >= 1 && currentSeason <= 6 && (
-  <div style={{ border: '1px solid #ccc', padding: '0.5rem', marginBottom: '1rem' }}>
-     <h3 style={{ whiteSpace: 'pre-wrap' }}>
-      {SEASON_NAMES[currentSeason] || `Season ${currentSeason}`}:{' '}
-      {SEASON_INSTRUCTIONS[currentSeason] || 'Choose All That Apply'}
-    </h3>
-
-    {[
-      ...Array(SEASON_CHECKBOX_COUNTS[currentSeason])
-    ].map((_, i) => {
-      const optionKey = `option${i + 1}`;
-
-      /* ---------- NEW LINE: pick the label for this checkbox ---------- */
-      const labelText =
-        SEASON_OPTION_LABELS[currentSeason]?.[i] ?? `Option ${i + 1}`;
-
-      return (
-        <label
-          key={optionKey}
-          style={{ display: 'block', fontSize: '1rem', margin: '0.3rem 0' }}
-        >
-          <input
-            type="checkbox"
-            checked={treeData.season_data[currentSeason]?.[optionKey] || false}
-            onChange={(e) =>
-              handleCheckboxChange(currentSeason, optionKey, e.target.checked)
-            }
-            style={{ width: '1.5rem', height: '1.5rem', marginRight: '0.5rem' }}
-          />
-          {/* ---------- REPLACED TEXT HERE ---------- */}
-          {labelText}
-        </label>
-      );
-    })}
-  </div>
-)}
-
+        {/* 3. Season-specific items */}
+        {treeData.season && currentSeason >= 1 && currentSeason <= 6 && (
+          <div style={{ border: '1px solid #ccc', padding: '0.5rem', marginBottom: '1rem' }}>
+            <h3 style={{ whiteSpace: 'pre-wrap' }}>
+              {SEASON_NAMES[currentSeason] || `Season ${currentSeason}`}:{' '}
+              {SEASON_INSTRUCTIONS[currentSeason] || 'Choose All That Apply'}
+            </h3>
+            {[...Array(SEASON_CHECKBOX_COUNTS[currentSeason])].map((_, i) => {
+              const optionKey = `option${i + 1}`;
+              const labelText = SEASON_OPTION_LABELS[currentSeason]?.[i] ?? `Option ${i + 1}`;
+              return (
+                <label key={optionKey} style={{ display: 'block', fontSize: '1rem', margin: '0.3rem 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={treeData.season_data[currentSeason]?.[optionKey] || false}
+                    onChange={(e) => handleCheckboxChange(currentSeason, optionKey, e.target.checked)}
+                    style={{ width: '1.5rem', height: '1.5rem', marginRight: '0.5rem' }}
+                  />
+                  {labelText}
+                </label>
+              );
+            })}
+          </div>
+        )}
 
         {treeData.season && currentSeason === 7 && (
           <div style={{ border: '1px solid #ccc', padding: '0.5rem', marginBottom: '1rem' }}>
@@ -499,7 +428,7 @@ async function saveChanges() {
                   const currentScore = seasonObj[q] || '';
                   return (
                     <tr key={q}>
-                      <td style={{ padding: '0.5rem', border: '1px solid #ccc' }}> {q}</td>
+                      <td style={{ padding: '0.5rem', border: '1px solid #ccc' }}>{q}</td>
                       {SEASON7_SCORES.map((score) => (
                         <td key={score} style={{ textAlign: 'center', border: '1px solid #ccc' }}>
                           <input
@@ -524,13 +453,7 @@ async function saveChanges() {
           <label>나무의 세력:</label>
           <div style={{ marginLeft: '0.5rem', display: 'flex', flexWrap: 'wrap' }}>
             {POWER_OPTIONS.map((p) => (
-              <button
-                key={p}
-                onClick={() => handleChange('power', p)}
-                style={buttonStyle(treeData.power === p)}
-              >
-                {p}
-              </button>
+              <button key={p} onClick={() => handleChange('power', p)} style={buttonStyle(treeData.power === p)}>{p}</button>
             ))}
           </div>
         </div>
@@ -540,13 +463,7 @@ async function saveChanges() {
           <label>나무의 균형도:</label>
           <div style={{ marginLeft: '0.5rem', display: 'flex', flexWrap: 'wrap' }}>
             {BALANCE_OPTIONS.map((b) => (
-              <button
-                key={b}
-                onClick={() => handleChange('balance', b)}
-                style={buttonStyle(treeData.balance === b)}
-              >
-                {b}
-              </button>
+              <button key={b} onClick={() => handleChange('balance', b)} style={buttonStyle(treeData.balance === b)}>{b}</button>
             ))}
           </div>
         </div>
@@ -556,73 +473,88 @@ async function saveChanges() {
           <label>해충관리:</label>
           <div style={{ marginLeft: '0.5rem', display: 'flex', flexWrap: 'wrap' }}>
             {BUG_OPTIONS.map((num) => (
-              <button
-                key={num}
-                onClick={() => handleChange('bugs', String(num))}
-                style={buttonStyle(treeData.bugs === String(num))}
-              >
-                {num}
-              </button>
+              <button key={num} onClick={() => handleChange('bugs', String(num))} style={buttonStyle(treeData.bugs === String(num))}>{num}</button>
             ))}
           </div>
         </div>
 
         {/* 7. Images */}
-        <div style={{ marginBottom: '1rem' }}>
-          <label>Images (up to 5):</label>
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => setNewImage(e.target.files[0])}
-            disabled={treeData.images.length >= 5}
-            style={{ marginLeft: '0.5rem' }}
-          />
-          <button
-            onClick={handleImageUpload}
-            disabled={!newImage || treeData.images.length >= 5}
-            style={{
-              marginLeft: '0.5rem',
-              backgroundColor: 'green',
-              color: 'white',
-              padding: '0.5rem 1rem',
-              border: 'none',
-              borderRadius: '0.3rem',
-              cursor: 'pointer',
-            }}
-          >
-            Upload
-          </button>
+        <div style={{ marginBottom: '0.5rem' }}>
+          <label>사진 ({treeData.images.length}/5):</label>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+            {/* 📷 카메라 직접 촬영 */}
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+              backgroundColor: treeData.images.length >= 5 ? '#ccc' : '#2196f3',
+              color: 'white', padding: '0.5rem 1rem', borderRadius: '0.3rem',
+              cursor: treeData.images.length >= 5 ? 'not-allowed' : 'pointer',
+              fontSize: '0.95rem',
+            }}>
+              📷 촬영
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => { if (e.target.files[0]) { setNewImage(e.target.files[0]); } }}
+                disabled={treeData.images.length >= 5}
+                style={{ display: 'none' }}
+              />
+            </label>
+
+            {/* 🖼 갤러리에서 선택 */}
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+              backgroundColor: treeData.images.length >= 5 ? '#ccc' : '#607d8b',
+              color: 'white', padding: '0.5rem 1rem', borderRadius: '0.3rem',
+              cursor: treeData.images.length >= 5 ? 'not-allowed' : 'pointer',
+              fontSize: '0.95rem',
+            }}>
+              🖼 갤러리
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => { if (e.target.files[0]) { setNewImage(e.target.files[0]); } }}
+                disabled={treeData.images.length >= 5}
+                style={{ display: 'none' }}
+              />
+            </label>
+
+            {/* 선택된 파일명 + 업로드 버튼 */}
+            {newImage && (
+              <>
+                <span style={{ fontSize: '0.85rem', color: '#555', alignSelf: 'center', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {newImage.name}
+                </span>
+                <button
+                  onClick={handleImageUpload}
+                  style={{ backgroundColor: 'green', color: 'white', padding: '0.5rem 1rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer' }}
+                >
+                  ✅ 업로드
+                </button>
+                <button
+                  onClick={() => setNewImage(null)}
+                  style={{ backgroundColor: '#ccc', color: '#333', padding: '0.5rem 0.7rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '1rem' }}>
           {treeData.images.map((url, idx) => (
             <div key={idx} style={{ position: 'relative', margin: '0.5rem' }}>
-              <img
-                src={url}
-                alt="Tree"
-                style={{ width: '80px', height: '80px', objectFit: 'cover' }}
-              />
+              <img src={url} alt="Tree" style={{ width: '80px', height: '80px', objectFit: 'cover' }} />
               <button
                 onClick={() => handleImageDelete(url)}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 0,
-                  backgroundColor: 'red',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '50%',
-                  cursor: 'pointer',
-                }}
+                style={{ position: 'absolute', top: 0, right: 0, backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '50%', cursor: 'pointer' }}
               >
                 X
               </button>
             </div>
           ))}
         </div>
-        {treeData.images.length >= 5 && (
-          <p style={{ color: 'red' }}>Max 5 images reached</p>
-        )}
+        {treeData.images.length >= 5 && <p style={{ color: 'red' }}>Max 5 images reached</p>}
 
         {/* 8. Comments */}
         <div style={{ marginBottom: '1rem' }}>
@@ -634,23 +566,15 @@ async function saveChanges() {
           />
         </div>
 
-
-      <div style={{ marginBottom: '0.5rem' }}>
-  <button
-    onClick={toggleShowTable}
-    style={{
-      padding: '0.5rem 1rem',
-      backgroundColor: '#5c6bc0',
-      color: 'white',
-      border: 'none',
-      borderRadius: '5px'
-    }}
-  >
-    {showTable ? '간단히 보기' : '더보기'}
-  </button>
+        {/* 더보기 */}
+        <div style={{ marginBottom: '0.5rem' }}>
+          <button
+            onClick={toggleShowTable}
+            style={{ padding: '0.5rem 1rem', backgroundColor: '#5c6bc0', color: 'white', border: 'none', borderRadius: '5px' }}
+          >
+            {showTable ? '간단히 보기' : '더보기'}
+          </button>
         </div>
-
-
 
         {showTable && (
           <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '0.2rem' }}>
@@ -669,7 +593,12 @@ async function saveChanges() {
               </thead>
               <tbody>
                 {history.map((row, idx) => (
-                  <tr key={idx}>
+                  <tr
+                    key={idx}
+                    onClick={() => loadDataForDate(formatDateForDisplay(row.date))}  // ✅ 행 클릭 시 해당 날짜 데이터 폼에 로드
+                    style={{ cursor: 'pointer' }}
+                    title="클릭하면 해당 날짜 데이터를 불러옵니다"
+                  >
                     <td style={cellStyle}>{row.date}</td>
                     <td style={cellStyle}>{SEASON_NAMES[row.season]}</td>
                     <td style={cellStyle}>{row.power}</td>
@@ -689,31 +618,16 @@ async function saveChanges() {
           </div>
         )}
 
-        {/* SAVE & CANCEL BUTTONS */}
+        {/* SAVE & CANCEL */}
         <button
           onClick={saveChanges}
-          style={{
-            backgroundColor: 'blue',
-            color: 'white',
-            padding: '0.5rem 1rem',
-            border: 'none',
-            borderRadius: '0.3rem',
-            cursor: 'pointer',
-          }}
+          style={{ backgroundColor: 'blue', color: 'white', padding: '0.5rem 1rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer' }}
         >
           Save & Close
         </button>
         <button
           onClick={onClose}
-          style={{
-            marginLeft: '0.5rem',
-            backgroundColor: '#ccc',
-            color: 'black',
-            padding: '0.5rem 1rem',
-            border: 'none',
-            borderRadius: '0.3rem',
-            cursor: 'pointer',
-          }}
+          style={{ marginLeft: '0.5rem', backgroundColor: '#ccc', color: 'black', padding: '0.5rem 1rem', border: 'none', borderRadius: '0.3rem', cursor: 'pointer' }}
         >
           Cancel
         </button>

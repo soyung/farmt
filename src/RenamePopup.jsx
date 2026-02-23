@@ -1,42 +1,53 @@
 import React, { useState } from 'react';
 
 export default function RenamePopup({ id, current = {}, onSave, onClose }) {
-  const [name,  setName]  = useState(current.name  || '');
+  const [name, setName] = useState(current.name || '');
   const [color, setColor] = useState(current.color || '#ffffff');
+  const [disabled, setDisabled] = useState(current.disabled || false);
 
   return (
     <div style={{
-      position:'fixed', inset:0, background:'rgba(0,0,0,.45)',
-      display:'flex', alignItems:'center', justifyContent:'center', zIndex:999
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999
     }}>
       <div style={{
-        background:'white', padding:'1rem', borderRadius:6, minWidth:220
+        background: 'white', padding: '1rem', borderRadius: 6, minWidth: 220
       }}>
-        <h3 style={{marginBottom:12}}>{id}</h3>
+        <h3 style={{ marginBottom: 12 }}>{id}</h3>
 
-        <label style={{fontSize:12}}>Name (optional)</label>
+        <label style={{ fontSize: 12 }}>Name (optional)</label>
         <input
           value={name}
           onChange={e => setName(e.target.value)}
-          style={{display:'block', width:'100%', margin:'4px 0 12px 0'}}
+          style={{ display: 'block', width: '100%', margin: '4px 0 12px 0' }}
         />
 
-        <label style={{fontSize:12}}>Background colour</label>
+        <label style={{ fontSize: 12 }}>Background colour</label>
         <input
           type="color"
           value={color}
           onChange={e => setColor(e.target.value)}
-          style={{display:'block', width:'100%', height:32, marginTop:4}}
+          style={{ display: 'block', width: '100%', height: 32, marginTop: 4, marginBottom: 12 }}
         />
 
-        <div style={{marginTop:16, textAlign:'right'}}>
-          <button onClick={onClose} style={{marginRight:8}}>Cancel</button>
+        <label style={{ display: 'flex', alignItems: 'center', fontSize: 12, marginBottom: 12 }}>
+          <input
+            type="checkbox"
+            checked={disabled}
+            onChange={e => setDisabled(e.target.checked)}
+            style={{ marginRight: 8, width: 16, height: 16 }}
+          />
+          비활성화 (빈 자리)
+        </label>
+
+        <div style={{ marginTop: 16, textAlign: 'right' }}>
+          <button onClick={onClose} style={{ marginRight: 8 }}>Cancel</button>
           <button
-            onClick={()=>{
-              onSave({ name: name.trim(), color });
+            onClick={() => {
+              onSave({ name: name.trim(), color, disabled });
               onClose();
             }}
-            style={{background:'#0077ff', color:'white', padding:'4px 10px'}}
+            style={{ background: '#0077ff', color: 'white', padding: '4px 10px' }}
           >
             Save
           </button>

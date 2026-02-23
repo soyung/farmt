@@ -5,7 +5,7 @@ const LabelContext = createContext();
 export const useLabels = () => useContext(LabelContext);
 
 export function LabelProvider({ children }) {
-  const [labels, setLabels] = useState({});      // { "Tree-1-1": {name,color} }
+  const [labels, setLabels] = useState({});      // { "Tree-1-1": {name,color,disabled} }
 
   /* ─── 1. initial fetch ─────────────────────────────────────────── */
   useEffect(() => {
@@ -13,8 +13,8 @@ export function LabelProvider({ children }) {
       const { data, error } = await supabase.from('tree_labels').select('*');
       if (!error && data) {
         const obj = {};
-        data.forEach(({ id, name, color }) => {
-          obj[id] = { name, color };
+        data.forEach(({ id, name, color, disabled }) => {
+          obj[id] = { name, color, disabled: disabled || false };
         });
         setLabels(obj);
       }
@@ -26,11 +26,12 @@ export function LabelProvider({ children }) {
   async function upsert(id, payload) {
     setLabels(prev => ({ ...prev, [id]: { ...prev[id], ...payload } }));
 
-    // Push to DB (ignore result for now; you could add error toast)
+    // Push to DB
     await supabase.from('tree_labels').upsert({
       id,
-      name:  payload.name  ?? labels[id]?.name  ?? null,
+      name: payload.name ?? labels[id]?.name ?? null,
       color: payload.color ?? labels[id]?.color ?? null,
+      disabled: payload.disabled ?? labels[id]?.disabled ?? false,
     });
   }
 
@@ -42,7 +43,14 @@ export function LabelProvider({ children }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tree_labels' },
         ({ new: row }) =>
-          setLabels(prev => ({ ...prev, [row.id]: { name: row.name, color: row.color } }))
+          setLabels(prev => ({ 
+            ...prev, 
+            [row.id]: { 
+              name: row.name, 
+              color: row.color, 
+              disabled: row.disabled || false 
+            } 
+          }))
       )
       .subscribe();
 
