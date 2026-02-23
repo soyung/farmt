@@ -308,16 +308,12 @@ export default function FarmMap({ treeData = {}, onTreeClick }) {
         ref={stageRef}
         width={window.innerWidth}
         height={stageHeight}
-        scaleX={scale}
-        scaleY={scale}
-        x={position.x}
-        y={position.y}
         draggable
         onWheel={handleWheel}
         onDragEnd={(e) => {
           posRef.current = { x: e.target.x(), y: e.target.y() };
         }}
-        pixelRatio={window.devicePixelRatio} 
+        pixelRatio={window.devicePixelRatio}
       >
         <Layer>{nodes}</Layer>
       </Stage>
